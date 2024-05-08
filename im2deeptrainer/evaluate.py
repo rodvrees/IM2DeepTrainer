@@ -1,6 +1,9 @@
 import numpy as np
 import wandb
 import matplotlib.pyplot as plt
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _mean_absolute_error(targets, predictions):
     return np.mean(np.abs(predictions - targets))
@@ -28,7 +31,10 @@ def _plot_predictions(targets, predictions, mae, mean_pearson_r, mre, save_path=
 
 def evaluate_and_plot(trainer, model, test_data, test_df, config):
     predictions = trainer.predict(model, test_data)
-    targets = test_df["CCS"].values
+    logger.debug(type(predictions))
+    logger.debug(len(predictions))
+    targets = test_df["CCS"].to_numpy()
+    logger.debug(len(targets))
 
     test_mae, test_mean_pearson_r, test_mre = _evaluate_predictions(
         predictions, targets

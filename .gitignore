@@ -1,10 +1,8 @@
 .pytest_cache/
 
-# Custom MS2PIP stuff
-data/
-*_pyx.c
-*_pyx_*.c
-ms2pip/models_xgboost/*.xgboost
+# Custom IM2DeepTrainer stuff
+test_data/*
+wandb/
 
 # Pytest
 .pytest_cache/

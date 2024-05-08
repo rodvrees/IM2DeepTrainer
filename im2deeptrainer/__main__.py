@@ -30,7 +30,7 @@ def _setup_logging(log_level):
         level=LOGGING_LEVELS[log_level],
         handlers=[
             RichHandler(
-                rich_tracebacks=True, console=console, show_level=True, show_path=False
+                rich_tracebacks=True, console=console, show_level=True, show_path=True
             )
         ],
     )
@@ -42,7 +42,8 @@ def _parse_config(config_path: Path):
     with open(config_path, "r") as config_path:
         config = json.load(config_path)
         logger.debug(config)
-    return config
+        model_config = config["model_params"]
+    return config, model_config
 
 
 @click.command()
@@ -52,10 +53,11 @@ def main(config, *args, **kwargs):
     _setup_logging(kwargs["log_level"])
     logger.info("Starting IM2DeepTrainer")
 
-    config = _parse_config(config)
-    train_data, valid_data, test_data = data_extraction(config)
-    model = train_model(train_data, valid_data, config)
-    evaluate_and_plot(model, test_data, config)
+    config, model_config = _parse_config(config)
+    data, test_df = data_extraction(config)
+    logger.debug(test_df.head())
+    trainer, model, test_loader = train_model(data, model_config, output_path=config["output_path"])
+    evaluate_and_plot(trainer, model, test_loader, test_df, config)
     logger.info("Finished IM2DeepTrainer")
 
 if __name__ == "__main__":

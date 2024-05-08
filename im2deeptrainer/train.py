@@ -1,9 +1,15 @@
 import torch
-from im2deeptrainer.model import IM2Deep
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
+import torch.nn as nn
+import logging
+import lightning as L
+from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
+from lightning.pytorch.loggers import WandbLogger
 
+
+
+from im2deeptrainer.model import IM2Deep
+
+logger = logging.getLogger(__name__)
 
 def _data_to_dataloaders(data, batch_size, shuffle=True):
     tensors = {}
@@ -23,12 +29,11 @@ def _get_dataloaders(data, batch_size):
     test_dataloader = _data_to_dataloaders(data["test"], batch_size, shuffle=False)
     return train_dataloader, valid_dataloader, test_dataloader
 
-def _setup_callbacks(model_config):
+def _setup_callbacks(model_config, output_path):
     callbacks = [ModelSummary(), RichProgressBar()]
     if model_config["use_best_model"]:
         mcp = ModelCheckpoint(
-            model_config["output_path"],
-            save_best_only=True,
+            output_path + "/checkpoint",
             filename=model_config["model_name"],
             monitor=model_config["monitor"],
             mode=model_config["mode"],
@@ -38,36 +43,37 @@ def _setup_callbacks(model_config):
 
     return callbacks
 
-def _setup_wandb_logger(model_config, model):
-    wandb_config = model_config["wandb"]
+def _setup_wandb_logger(wandb_config, model):
     wandb_logger = WandbLogger(project=wandb_config["project_name"])
     wandb_logger.watch(model)
     return wandb_logger
 
-def train_model(data, model_config):
+def train_model(data, model_config, output_path):
+    wandb_config = model_config["wandb"]
     train_data, valid_data, test_data = _get_dataloaders(data, model_config["batch_size"])
-    model = IM2Deep(model_config, criterion=model_config["criterion"])
+    model = IM2Deep(model_config, criterion=nn.L1Loss())
+    logger.debug(model)
 
-    callbacks = _setup_callbacks(model_config)
-    if model_config["wandb"]["enabled"]:
-        wandb_logger = _setup_wandb_logger(model_config)
+    callbacks = _setup_callbacks(model_config, output_path)
+    if wandb_config["enabled"]:
+        wandb_logger = _setup_wandb_logger(wandb_config, model)
 
-    trainer = pl.Trainer(
-        devices=model_config["devices"],
-        accelator="auto",
-        max_epochs=model_config["n_epochs"],
+    trainer = L.Trainer(
+        devices=model_config["n_of_devices"],
+        accelerator="auto",
+        max_epochs=model_config["epochs"],
         enable_progress_bar=True,
-        callbacks=[callbacks],
-        logger=wandb_logger if model_config["wandb"]["enabled"] else None,
+        callbacks=callbacks,
+        logger=wandb_logger if wandb_config["enabled"] else None,
     )
 
     trainer.fit(model, train_data, valid_data)
 
     # Load best model
     if model_config["use_best_model"]:
-        model = IM2Deep.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=model_config["criterion"])
+        model = IM2Deep.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
 
-    return trainer, model
+    return trainer, model, test_data
     #TODO: save full model?
 
 

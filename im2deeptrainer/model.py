@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import pytorch_lightning as L
+import lightning as L
 
 class LRelu_with_saturation(nn.Module):
     def __init__(self, negative_slope, saturation):
@@ -128,8 +128,8 @@ class IM2Deep(L.LightningModule):
 
 
 
-        self.log('Train loss': loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Train MAE': self.mae(y_hat, y), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Train loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Train MAE', self.mae(y_hat, y), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -137,8 +137,8 @@ class IM2Deep(L.LightningModule):
         y_hat = self(atom_comp, diatom_comp, global_feats, one_hot)
         loss = self.criterion(y_hat, y)
 
-        self.log('Validation loss': loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Validation MAE': self.mae(y_hat, y), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Validation loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Validation MAE', self.mae(y_hat, y), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -146,8 +146,8 @@ class IM2Deep(L.LightningModule):
         y_hat = self(atom_comp, diatom_comp, global_feats, one_hot)
         loss = self.criterion(y_hat, y)
 
-        self.log('Test loss': loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Test MAE': self.mae(y_hat, y), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Test loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Test MAE', self.mae(y_hat, y), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def predict_step(self, batch, batch_idx, dataloader_idx=None):
