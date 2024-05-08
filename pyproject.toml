@@ -1,0 +1,68 @@
+[project]
+name = "im2deeptrainer"
+description = "Training of new IM2Deep models"
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ["proteomics", "peptide", "timsTOF", "CCS"]
+authors = [
+    { name = "Robbe Devreese", email = "robbe.devreese@ugent.be" },
+    { name = "Robbin Bouwmeester", email = "robbin.bouwmeester@ugent.be" },
+    { name = "Ralf Gabriels", email = "ralf@gabriels.dev" },
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dynamic = ["version"]
+requires-python = ">=3.8"
+dependencies = [
+    "click",
+    "deeplc",
+    "deeplcretrainer",
+    "psm_utils",
+    "tensorflow>=2.2,<2.13.0",
+    "pandas",
+    "numpy",
+    "rich"
+]
+
+[project.optional-dependencies]
+dev = ["black", "isort>5", "pytest", "pytest-cov"]
+docs = [
+    "sphinx",
+    "numpydoc>=1,<2",
+    "recommonmark",
+    "sphinx-mdinclude",
+    "toml",
+    "semver>=2",
+    "sphinx_rtd_theme",
+    "sphinx-autobuild",
+]
+
+[project.urls]
+GitHub = "https://github.com/rodvrees/IM2DeepTrainer"
+CompOmics = "https://www.compomics.com"
+
+[project.scripts]
+im2deep = "im2deeptrainer.__main__:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "im2deeptrainer.__version__"}
+
+[tool.isort]
+profile = "black"
+
+[tool.black]
+line-length = 99
+target-version = ['py38']
+
+[tool.ruff]
+line-length = 99
+target-version = "py38"

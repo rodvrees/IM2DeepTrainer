@@ -2,6 +2,12 @@ import logging
 import click
 from rich.logging import RichHandler
 from rich.console import Console
+import json
+from pathlib import Path
+from im2deeptrainer.exceptions import IM2DeepTrainerConfigError
+
+# Relative imports
+from im2deeptrainer.extract_data import data_extraction
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -27,16 +33,27 @@ def _setup_logging(log_level):
         ],
     )
 
+def _parse_config(config_path: Path):
+    if Path(config_path).suffix.lower() != ".json":
+        raise IM2DeepTrainerConfigError("Config file must be a JSON file")
+
+    with open(config_path, "r") as config_path:
+        config = json.load(config_path)
+        logger.debug(config)
+    return config
+
 
 @click.command()
+@click.argument("config", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option("--log-level", type=click.Choice(LOGGING_LEVELS.keys()), default="INFO")
-@click.option("--config", type=click.Path(exists=True, dir_okay=False)) # TODO: add default in script as a variable, e.g. DEFAULT_CONFIG
-def main(*args, **kwargs):
+def main(config, *args, **kwargs):
     _setup_logging(kwargs["log_level"])
     logger.info("Starting IM2DeepTrainer")
 
+    #TODO: parse config file
+    config = _parse_config(config)
     # TODO: feature extraction
-    raise NotImplementedError("Feature extraction not implemented yet")
+    train_data, valid_data, test_data = data_extraction(config)
 
     # TODO: model training
     raise NotImplementedError("Model training not implemented yet")

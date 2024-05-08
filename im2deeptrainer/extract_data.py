@@ -38,8 +38,8 @@ def _get_matrices(df, split_name):
     return data
 
 
-def data_extraction(data_path, config):
-    data = pd.read_csv(data_path)
+def data_extraction(config):
+    data = pd.read_csv(config['data_path'])
     ccs_df_train, ccs_df_test = _train_test_split(data)
     ccs_df_train, ccs_df_valid = _train_test_split(ccs_df_test)
     train_data = _get_matrices(ccs_df_train, "train")
