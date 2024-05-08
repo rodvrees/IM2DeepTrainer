@@ -67,6 +67,7 @@ def train_model(data, model_config):
     if model_config["use_best_model"]:
         model = IM2Deep.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=model_config["criterion"])
 
-    return model
+    return trainer, model
+    #TODO: save full model?
 
 

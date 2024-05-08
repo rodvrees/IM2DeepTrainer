@@ -8,6 +8,8 @@ from im2deeptrainer.exceptions import IM2DeepTrainerConfigError
 
 # Relative imports
 from im2deeptrainer.extract_data import data_extraction
+from im2deeptrainer.train import train_model
+from im2deeptrainer.evaluate import evaluate_and_plot
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -50,17 +52,10 @@ def main(config, *args, **kwargs):
     _setup_logging(kwargs["log_level"])
     logger.info("Starting IM2DeepTrainer")
 
-    #TODO: parse config file
     config = _parse_config(config)
-    # TODO: feature extraction
     train_data, valid_data, test_data = data_extraction(config)
-
-    # TODO: model training
-    raise NotImplementedError("Model training not implemented yet")
-
-    # TODO: model evaluation and plotting
-    raise NotImplementedError("Model evaluation and plotting not implemented yet")
-
+    model = train_model(train_data, valid_data, config)
+    evaluate_and_plot(model, test_data, config)
     logger.info("Finished IM2DeepTrainer")
 
 if __name__ == "__main__":
