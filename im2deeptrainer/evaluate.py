@@ -2,16 +2,23 @@ import numpy as np
 import wandb
 import matplotlib.pyplot as plt
 import logging
+import torch
 
 logger = logging.getLogger(__name__)
 
 def _mean_absolute_error(targets, predictions):
-    return np.mean(np.abs(predictions - targets))
+    logger.debug('Here2')
+    differences = np.abs(predictions - targets)
+    mae = np.mean(differences)
+    del differences
+    return mae
 
 def _pearsonr(targets, predictions):
-    return np.corrcoef(targets, predictions)[0, 1]
+    logger.debug('Here3')
+    return np.corrcoef(targets, predictions)[0]
 
 def _median_relative_error(targets, predictions):
+    logger.debug('Here4')
     return np.median(np.abs(predictions - targets) / targets)
 
 def _evaluate_predictions(predictions, targets):
@@ -22,25 +29,23 @@ def _evaluate_predictions(predictions, targets):
     return mae, mean_pearson_r, mre
 
 def _plot_predictions(targets, predictions, mae, mean_pearson_r, mre, save_path=None, name=None):
-    plt.scatter(targets, predictions)
+    logger.debug('Here5')
+    plt.scatter(targets, predictions, s=1)
     plt.xlabel("True CCS")
     plt.ylabel("Predicted CCS")
-    plt.title(f"MAE: {mae:.2f}, Pearson R: {mean_pearson_r:.2f}, MRE: {mre:.2f}")
+    plt.title(f"MAE: {mae:.2f}, Pearson R: {mean_pearson_r:.6f}, MRE: {mre:.4f}")
     plt.savefig(save_path + "predictions-{}.png".format(name))
 
 
 def evaluate_and_plot(trainer, model, test_data, test_df, config):
-    predictions = trainer.predict(model, test_data)
-    logger.debug(type(predictions))
-    logger.debug(len(predictions))
+    prediction_list = trainer.predict(model, test_data)
+    predictions = np.concatenate(prediction_list)
     targets = test_df["CCS"].to_numpy()
-    logger.debug(len(targets))
-
     test_mae, test_mean_pearson_r, test_mre = _evaluate_predictions(
         predictions, targets
     )
 
-    if config['wandb']['enabled']:
+    if config['model_params']['wandb']['enabled']:
         wandb.log({
             "test_mae": test_mae,
             "test_mean_pearson_r": test_mean_pearson_r,
@@ -48,7 +53,7 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
         })
 
     _plot_predictions(
-        targets, predictions, test_mae, test_mean_pearson_r, test_mre, config['output_path'], config['model_name']
+        targets, predictions, test_mae, test_mean_pearson_r, test_mre, config['output_path'], config['model_params']['model_name']
     )
 
 

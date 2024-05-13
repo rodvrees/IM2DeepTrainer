@@ -35,6 +35,14 @@ def _setup_logging(log_level):
         ],
     )
 
+def _setup_wandb(config):
+    wandb_config = config["model_params"]["wandb"]
+    if wandb_config["enabled"]:
+        import wandb
+        wandb.init(project=wandb_config["project_name"], name=config["model_params"]["model_name"], save_code=False, config=config['model_params'])
+        config = wandb.config
+    return config
+
 def _parse_config(config_path: Path):
     if Path(config_path).suffix.lower() != ".json":
         raise IM2DeepTrainerConfigError("Config file must be a JSON file")
@@ -42,8 +50,7 @@ def _parse_config(config_path: Path):
     with open(config_path, "r") as config_path:
         config = json.load(config_path)
         logger.debug(config)
-        model_config = config["model_params"]
-    return config, model_config
+    return config
 
 
 @click.command()
@@ -53,7 +60,8 @@ def main(config, *args, **kwargs):
     _setup_logging(kwargs["log_level"])
     logger.info("Starting IM2DeepTrainer")
 
-    config, model_config = _parse_config(config)
+    config = _parse_config(config)
+    model_config = _setup_wandb(config)
     data, test_df = data_extraction(config)
     logger.debug(test_df.head())
     trainer, model, test_loader = train_model(data, model_config, output_path=config["output_path"])

@@ -1,6 +1,22 @@
 import torch
 import torch.nn as nn
 import lightning as L
+import logging
+import wandb
+
+logger = logging.getLogger(__name__)
+
+class LogLowestMAE(L.Callback):
+    def __init__(self):
+        super(LogLowestMAE, self).__init__()
+        self.bestMAE = float("inf")
+
+    def on_validation_end(self, trainer, pl_module):
+        currentMAE = trainer.callback_metrics["Validation MAE"]
+        if currentMAE < self.bestMAE:
+            self.bestMAE = currentMAE
+        wandb.log({"Best Val MAE": self.bestMAE})
+
 
 class LRelu_with_saturation(nn.Module):
     def __init__(self, negative_slope, saturation):
@@ -17,10 +33,10 @@ class IM2Deep(L.LightningModule):
     def __init__(self, config, criterion):
         super(IM2Deep, self).__init__()
         self.config = config
-        self.ConvAtomComp = nn.ModuleList()
         self.criterion = criterion
         self.mae = nn.L1Loss()
 
+        self.ConvAtomComp = nn.ModuleList()
         self.ConvAtomComp.append(nn.Conv1d(6, self.config['AtomComp_out_channels_start'], self.config['AtomComp_kernel_size'], padding='same'))
         self.ConvAtomComp.append(LRelu_with_saturation(self.config['LRelu_negative_slope'], self.config['LRelu_saturation']))
         self.ConvAtomComp.append(nn.Conv1d(self.config['AtomComp_out_channels_start'], self.config['AtomComp_out_channels_start'], self.config['AtomComp_kernel_size'], padding='same'))
@@ -123,7 +139,9 @@ class IM2Deep(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot)
+        # logger.debug(y)
+        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+        # logger.debug(y_hat)
         loss = self.criterion(y_hat, y)
 
 
@@ -134,7 +152,7 @@ class IM2Deep(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot)
+        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
         loss = self.criterion(y_hat, y)
 
         self.log('Validation loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
@@ -143,7 +161,7 @@ class IM2Deep(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot)
+        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
         loss = self.criterion(y_hat, y)
 
         self.log('Test loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
@@ -152,7 +170,7 @@ class IM2Deep(L.LightningModule):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=None):
         atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot)
+        y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
         return y_hat
 
     def configure_optimizers(self):

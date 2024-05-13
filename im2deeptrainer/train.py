@@ -5,9 +5,8 @@ import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
 from lightning.pytorch.loggers import WandbLogger
 
-
-
 from im2deeptrainer.model import IM2Deep
+from im2deeptrainer.model import LogLowestMAE
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +16,7 @@ def _data_to_dataloaders(data, batch_size, shuffle=True):
         tensors[key] = torch.tensor(
             data[key], dtype=torch.float32
         )  # TODO: check if dtype is correct, for y this is not specified in IM2DeepMulti
+        logger.debug(tensors[key].shape)
 
     dataset = torch.utils.data.TensorDataset(*[tensors[key] for key in data.keys()])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
@@ -27,10 +27,11 @@ def _get_dataloaders(data, batch_size):
     train_dataloader = _data_to_dataloaders(data["train"], batch_size, shuffle=True)
     valid_dataloader = _data_to_dataloaders(data["valid"], batch_size, shuffle=False)
     test_dataloader = _data_to_dataloaders(data["test"], batch_size, shuffle=False)
+    logger.debug(len(test_dataloader))
     return train_dataloader, valid_dataloader, test_dataloader
 
 def _setup_callbacks(model_config, output_path):
-    callbacks = [ModelSummary(), RichProgressBar()]
+    callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE()]
     if model_config["use_best_model"]:
         mcp = ModelCheckpoint(
             output_path + "/checkpoint",
@@ -59,8 +60,8 @@ def train_model(data, model_config, output_path):
         wandb_logger = _setup_wandb_logger(wandb_config, model)
 
     trainer = L.Trainer(
-        devices=model_config["n_of_devices"],
-        accelerator="auto",
+        accelerator="gpu",
+        devices=[model_config["device"]],
         max_epochs=model_config["epochs"],
         enable_progress_bar=True,
         callbacks=callbacks,
