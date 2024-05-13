@@ -353,8 +353,8 @@ class IM2Deep(L.LightningModule):
             self.MolDesc.append(nn.Flatten())
 
             # Calculate the output size of the MolDesc layers
-            ConvMolDescSize = (60 // (2 * self.config["AtomComp_MaxPool_kernel_size"])) * (
-                self.config["AtomComp_out_channels_start"] // 4
+            ConvMolDescSize = (60 // (2 * self.config["Mol_MaxPool_kernel_size"])) * (
+                self.config["Mol_out_channels_start"] // 4
             )
 
         # Calculate the total input size for the Concat layer

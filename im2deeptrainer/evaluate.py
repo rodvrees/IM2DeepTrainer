@@ -33,9 +33,10 @@ def _plot_predictions(test_df, predictions, mae, mean_pearson_r, mre, save_path=
     targets = test_df["CCS"].to_numpy()
     charges = test_df["charge"].to_numpy()
     plt.scatter(targets, predictions, s=1, c=charges, cmap="viridis")
+    plt.plot([min(targets), max(targets)], [min(targets), max(targets)], color="red")
     plt.xlabel("True CCS")
     plt.ylabel("Predicted CCS")
-    plt.title(f"MAE: {mae:.2f}, Pearson R: {mean_pearson_r:.6f}, MRE: {mre:.4f}")
+    plt.title(f"MAE: {mae:.2f}, Pearson R: {mean_pearson_r:.6f}, MRE: {mre:.5f}")
     plt.savefig(save_path + "predictions-{}.png".format(name))
 
 
