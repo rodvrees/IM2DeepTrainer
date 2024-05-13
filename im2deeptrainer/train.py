@@ -8,6 +8,7 @@ from lightning.pytorch.loggers import WandbLogger
 from im2deeptrainer.model import IM2Deep
 from im2deeptrainer.model import LogLowestMAE
 
+torch.set_float32_matmul_precision('high')
 logger = logging.getLogger(__name__)
 
 def _data_to_dataloaders(data, batch_size, shuffle=True):

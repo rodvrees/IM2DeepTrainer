@@ -3,6 +3,7 @@ import wandb
 import matplotlib.pyplot as plt
 import logging
 import torch
+from scipy import stats
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ def _mean_absolute_error(targets, predictions):
 
 def _pearsonr(targets, predictions):
     logger.debug('Here3')
-    return np.corrcoef(targets, predictions)[0]
+    return stats.pearsonr(targets, predictions).statistic
 
 def _median_relative_error(targets, predictions):
     logger.debug('Here4')
@@ -23,14 +24,15 @@ def _median_relative_error(targets, predictions):
 
 def _evaluate_predictions(predictions, targets):
     mae = _mean_absolute_error(targets, predictions)
-    mean_pearson_r = _pearsonr(targets, predictions)[0]
+    mean_pearson_r = _pearsonr(targets, predictions)
     mre = _median_relative_error(targets, predictions)
 
     return mae, mean_pearson_r, mre
 
-def _plot_predictions(targets, predictions, mae, mean_pearson_r, mre, save_path=None, name=None):
-    logger.debug('Here5')
-    plt.scatter(targets, predictions, s=1)
+def _plot_predictions(test_df, predictions, mae, mean_pearson_r, mre, save_path=None, name=None):
+    targets = test_df["CCS"].to_numpy()
+    charges = test_df["charge"].to_numpy()
+    plt.scatter(targets, predictions, s=1, c=charges, cmap="viridis")
     plt.xlabel("True CCS")
     plt.ylabel("Predicted CCS")
     plt.title(f"MAE: {mae:.2f}, Pearson R: {mean_pearson_r:.6f}, MRE: {mre:.4f}")
@@ -47,13 +49,13 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
 
     if config['model_params']['wandb']['enabled']:
         wandb.log({
-            "test_mae": test_mae,
-            "test_mean_pearson_r": test_mean_pearson_r,
-            "test_mre": test_mre
+            "Test MAE": test_mae,
+            "Test Pearson R": test_mean_pearson_r,
+            "Test MRE": test_mre
         })
 
     _plot_predictions(
-        targets, predictions, test_mae, test_mean_pearson_r, test_mre, config['output_path'], config['model_params']['model_name']
+        test_df, predictions, test_mae, test_mean_pearson_r, test_mre, config['output_path'], config['model_params']['model_name']
     )
 
 
