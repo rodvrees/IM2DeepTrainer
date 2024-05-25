@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 random.seed(42)
 
 MOL_FEATS = pd.read_csv(
-    os.path.join(os.path.dirname(os.path.realpath(__file__)), "aa_mol_desc_feats.csv")
+    os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "aa_mol_desc_feats.csv"
+    )
 )
 
 
@@ -43,7 +45,7 @@ def _aa_chemical_features(features, mask=None):
 def _mod_chemical_features(features, mask=None):
     mod_features = features.iloc[20:]
     if mask:
-        mod_features[mod_features.columns[[mask]]] = 0
+        mod_features[mod_features.columns[mask]] = 0
     mod_features = mod_features.set_index("Elements").T
     modified = mod_features.to_dict("list")
     dic = {}
@@ -56,8 +58,7 @@ def _mod_chemical_features(features, mask=None):
 def _empty_array():
     return np.zeros(
         (13, 60), dtype=np.float32
-    )  # TODO: Adapt 13 this to the number of features, do not hardcode
-
+    )
 
 def _string_to_tuple_list(input_string):
     parts = input_string.split("|")
@@ -106,22 +107,21 @@ def _get_mol_matrix(feat_df, features=MOL_FEATS):
         )
     return np.array(mol_feats)
 
-
-def _get_matrices(df, split_name, add_X_mol=True):
+def _get_matrices(df, split_name, add_X_mol=True, add_charge_dupe_feat=False):
     # TODO: memory inneficient, fix
     if "tr" not in df.columns:
         if "CCS" not in df.columns:
             raise ValueError("CCS column not found in dataframe")
         else:
-            df_renamed = df.rename(columns={"CCS": "tr"})
+            df.rename(columns={"CCS": "tr"}, inplace=True)
 
-    feat_df = get_feat_df(df_renamed, predict_ccs=True)
-    feat_df["charge"] = df_renamed["charge"]
-    feat_df["seq"] = df_renamed["seq"]
-    feat_df["modifications"] = df_renamed["modifications"]
+    logger.debug(len(df))
+
+    feat_df = get_feat_df(df, predict_ccs=True)
+    feat_df["charge"] = df["charge"]
+    feat_df["seq"] = df["seq"]
+    feat_df["modifications"] = df["modifications"]
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
-    logger.debug("X shape: {}".format(X.shape))
-
 
     data = {
         f"X_{split_name}_AtomEnc": X,
@@ -134,25 +134,49 @@ def _get_matrices(df, split_name, add_X_mol=True):
     if add_X_mol:
         X_mol = _get_mol_matrix(feat_df.reset_index(drop=True))
         data[f"X_{split_name}_MolEnc"] = X_mol
-        logger.debug("X_mol shape {}:".format(str(X_mol.shape)))
 
     return data
 
 
 def data_extraction(config):
     data = pd.read_csv(config["data_path"])
-    ccs_df_train, ccs_df_test = _train_test_split(data, config["test_split"])
+    logger.debug(len(data))
+
+    if config["remove_charge_dupes"]:
+        data = data.drop_duplicates(subset=["seq", "modifications"], keep="first")
+        logger.debug(len(data))
+
+    try:
+        ccs_df_test = pd.read_csv(config["test_data_path"])
+        ccs_df_train = data
+    except KeyError:
+        ccs_df_train, ccs_df_test = _train_test_split(data, config["test_split"])
+
     ccs_df_train, ccs_df_valid = _train_test_split(ccs_df_train, config["val_split"])
+
+    if config["save_dfs"]:
+        ccs_df_train.to_csv(f"{config['output_path']}/train_data.csv", index=False)
+        ccs_df_valid.to_csv(f"{config['output_path']}/valid_data.csv", index=False)
+        ccs_df_test.to_csv(f"{config['output_path']}/test_data.csv", index=False)
+
     logger.debug(
         f"Train: {ccs_df_train.shape}, Valid: {ccs_df_valid.shape}, Test: {ccs_df_test.shape}"
     )
     train_data = _get_matrices(
-        ccs_df_train, "train", add_X_mol=config["model_params"]["add_X_mol"]
+        ccs_df_train,
+        "train",
+        add_X_mol=config["model_params"]["add_X_mol"],
     )
     valid_data = _get_matrices(
-        ccs_df_valid, "valid", add_X_mol=config["model_params"]["add_X_mol"]
+        ccs_df_valid,
+        "valid",
+        add_X_mol=config["model_params"]["add_X_mol"],
     )
-    test_data = _get_matrices(ccs_df_test, "test", add_X_mol=config["model_params"]["add_X_mol"])
+    test_data = _get_matrices(
+        ccs_df_test,
+        "test",
+        add_X_mol=config["model_params"]["add_X_mol"],
+    )
 
     if config["save_data_tensors"]:
         for split, data_dict in zip(

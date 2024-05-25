@@ -8,18 +8,15 @@ from scipy import stats
 logger = logging.getLogger(__name__)
 
 def _mean_absolute_error(targets, predictions):
-    logger.debug('Here2')
     differences = np.abs(predictions - targets)
     mae = np.mean(differences)
     del differences
     return mae
 
 def _pearsonr(targets, predictions):
-    logger.debug('Here3')
     return stats.pearsonr(targets, predictions).statistic
 
 def _median_relative_error(targets, predictions):
-    logger.debug('Here4')
     return np.median(np.abs(predictions - targets) / targets)
 
 def _evaluate_predictions(predictions, targets):
@@ -30,7 +27,10 @@ def _evaluate_predictions(predictions, targets):
     return mae, mean_pearson_r, mre
 
 def _plot_predictions(test_df, predictions, mae, mean_pearson_r, mre, save_path=None, name=None):
-    targets = test_df["CCS"].to_numpy()
+    try:
+        targets = test_df["CCS"].to_numpy()
+    except KeyError:
+        targets = test_df["tr"].to_numpy()
     charges = test_df["charge"].to_numpy()
     plt.scatter(targets, predictions, s=1, c=charges, cmap="viridis")
     plt.plot([min(targets), max(targets)], [min(targets), max(targets)], color="red")
@@ -43,7 +43,10 @@ def _plot_predictions(test_df, predictions, mae, mean_pearson_r, mre, save_path=
 def evaluate_and_plot(trainer, model, test_data, test_df, config):
     prediction_list = trainer.predict(model, test_data)
     predictions = np.concatenate(prediction_list)
-    targets = test_df["CCS"].to_numpy()
+    try:
+        targets = test_df["CCS"].to_numpy()
+    except KeyError:
+        targets = test_df["tr"].to_numpy()
     test_mae, test_mean_pearson_r, test_mre = _evaluate_predictions(
         predictions, targets
     )

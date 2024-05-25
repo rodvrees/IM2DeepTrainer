@@ -3,6 +3,7 @@ import torch.nn as nn
 import lightning as L
 import logging
 import wandb
+# from pytorchsummary import summary
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,30 @@ class LRelu_with_saturation(nn.Module):
         activated = self.leaky_relu(x)
         return torch.clamp(activated, max=self.saturation)
 
+class Conv1dActivation(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, padding, initializer, negative_slope, saturation):
+        super(Conv1dActivation, self).__init__()
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding)
+        self.initializer = initializer
+        self.activation = LRelu_with_saturation(negative_slope=negative_slope, saturation=saturation)
+
+        initializer(self.conv.weight, 0.0, 0.05)
+
+    def forward(self, x):
+        return self.activation(self.conv(x))
+
+class DenseActivation(nn.Module):
+    def __init__(self, in_features, out_features, initializer, negative_slope, saturation):
+        super(DenseActivation, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.initializer = initializer
+        self.activation = LRelu_with_saturation(negative_slope=negative_slope, saturation=saturation)
+
+        initializer(self.linear.weight, 0.0, 0.05)
+
+    def forward(self, x):
+        return self.activation(self.linear(x))
+
 
 class IM2Deep(L.LightningModule):
     def __init__(self, config, criterion):
@@ -38,31 +63,29 @@ class IM2Deep(L.LightningModule):
         self.criterion = criterion
         self.mae = nn.L1Loss()
 
+        initi = self.configure_init()
+
         self.ConvAtomComp = nn.ModuleList()
         self.ConvAtomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 6,
                 self.config["AtomComp_out_channels_start"],
                 self.config["AtomComp_kernel_size"],
                 padding="same",
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvAtomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
-            )
-        )
-        self.ConvAtomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["AtomComp_out_channels_start"],
                 self.config["AtomComp_out_channels_start"],
                 self.config["AtomComp_kernel_size"],
                 padding="same",
-            )
-        )
-        self.ConvAtomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvAtomComp.append(
@@ -72,29 +95,25 @@ class IM2Deep(L.LightningModule):
             )
         )
         self.ConvAtomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["AtomComp_out_channels_start"],
                 self.config["AtomComp_out_channels_start"] // 2,
                 self.config["AtomComp_kernel_size"],
                 padding="same",
-            )
-        )  # Input is probably 256 now?
-        self.ConvAtomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvAtomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["AtomComp_out_channels_start"] // 2,
                 self.config["AtomComp_out_channels_start"] // 2,
                 self.config["AtomComp_kernel_size"],
                 padding="same",
-            )
-        )
-        self.ConvAtomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvAtomComp.append(
@@ -104,61 +123,54 @@ class IM2Deep(L.LightningModule):
             )
         )
         self.ConvAtomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["AtomComp_out_channels_start"] // 2,
                 self.config["AtomComp_out_channels_start"] // 4,
                 self.config["AtomComp_kernel_size"],
                 padding="same",
-            )
-        )  # Input is probably 128 now?
-        self.ConvAtomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvAtomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["AtomComp_out_channels_start"] // 4,
                 self.config["AtomComp_out_channels_start"] // 4,
                 self.config["AtomComp_kernel_size"],
                 padding="same",
-            )
-        )
-        self.ConvAtomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvAtomComp.append(nn.Flatten())
+
         ConvAtomCompSize = (60 // (2 * self.config["AtomComp_MaxPool_kernel_size"])) * (
             self.config["AtomComp_out_channels_start"] // 4
         )
 
         self.ConvDiatomComp = nn.ModuleList()
         self.ConvDiatomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 6,
                 self.config["DiatomComp_out_channels_start"],
                 self.config["DiatomComp_kernel_size"],
                 padding="same",
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvDiatomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
-            )
-        )
-        self.ConvDiatomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["DiatomComp_out_channels_start"],
                 self.config["DiatomComp_out_channels_start"],
                 self.config["DiatomComp_kernel_size"],
                 padding="same",
-            )
-        )
-        self.ConvDiatomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvDiatomComp.append(
@@ -168,81 +180,87 @@ class IM2Deep(L.LightningModule):
             )
         )
         self.ConvDiatomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["DiatomComp_out_channels_start"],
                 self.config["DiatomComp_out_channels_start"] // 2,
                 self.config["DiatomComp_kernel_size"],
                 padding="same",
-            )
-        )  # Input is probably 64 now?
-        self.ConvDiatomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvDiatomComp.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["DiatomComp_out_channels_start"] // 2,
                 self.config["DiatomComp_out_channels_start"] // 2,
                 self.config["DiatomComp_kernel_size"],
                 padding="same",
-            )
-        )
-        self.ConvDiatomComp.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
         self.ConvDiatomComp.append(nn.Flatten())
 
-        # Calculate the output size of the DiatomComp layers
         ConvDiAtomCompSize = (30 // self.config["DiatomComp_MaxPool_kernel_size"]) * (
             self.config["DiatomComp_out_channels_start"] // 2
         )
 
         self.ConvGlobal = nn.ModuleList()
-        self.ConvGlobal.append(nn.Linear(60, self.config["Global_units"]))
         self.ConvGlobal.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                60,
+                self.config["Global_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.ConvGlobal.append(nn.Linear(self.config["Global_units"], self.config["Global_units"]))
         self.ConvGlobal.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.config["Global_units"],
+                self.config["Global_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.ConvGlobal.append(nn.Linear(self.config["Global_units"], self.config["Global_units"]))
         self.ConvGlobal.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.config["Global_units"],
+                self.config["Global_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
 
-        # Calculate the output size of the Global layers
         ConvGlobal_output_size = self.config["Global_units"]
 
-        # One-hot encoding
         self.OneHot = nn.ModuleList()
         self.OneHot.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 20,
                 self.config["OneHot_out_channels"],
                 self.config["One_hot_kernel_size"],
                 padding="same",
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.OneHot.append(nn.Tanh())
         self.OneHot.append(
-            nn.Conv1d(
+            Conv1dActivation(
                 self.config["OneHot_out_channels"],
                 self.config["OneHot_out_channels"],
                 self.config["One_hot_kernel_size"],
                 padding="same",
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.OneHot.append(nn.Tanh())
         self.OneHot.append(
             nn.MaxPool1d(
                 self.config["OneHot_MaxPool_kernel_size"],
@@ -251,39 +269,32 @@ class IM2Deep(L.LightningModule):
         )
         self.OneHot.append(nn.Flatten())
 
-        # Calculate the output size of the OneHot layers
         conv_output_size_OneHot = (60 // self.config["OneHot_MaxPool_kernel_size"]) * self.config[
             "OneHot_out_channels"
         ]
-        print(conv_output_size_OneHot)
 
-        # TODO: for now channels is equal to atomcompchannels, but should be changed in config
         if config["add_X_mol"]:
             self.MolDesc = nn.ModuleList()
             self.MolDesc.append(
-                nn.Conv1d(
+                Conv1dActivation(
                     13,
                     self.config["Mol_out_channels_start"],
                     self.config["Mol_kernel_size"],
                     padding="same",
+                    initializer=initi,
+                    negative_slope=self.config["LRelu_negative_slope"],
+                    saturation=self.config["LRelu_saturation"],
                 )
             )
             self.MolDesc.append(
-                LRelu_with_saturation(
-                    self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
-                )
-            )
-            self.MolDesc.append(
-                nn.Conv1d(
+                Conv1dActivation(
                     self.config["Mol_out_channels_start"],
                     self.config["Mol_out_channels_start"],
                     self.config["Mol_kernel_size"],
                     padding="same",
-                )
-            )
-            self.MolDesc.append(
-                LRelu_with_saturation(
-                    self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                    initializer=initi,
+                    negative_slope=self.config["LRelu_negative_slope"],
+                    saturation=self.config["LRelu_saturation"],
                 )
             )
             self.MolDesc.append(
@@ -293,29 +304,25 @@ class IM2Deep(L.LightningModule):
                 )
             )
             self.MolDesc.append(
-                nn.Conv1d(
+                Conv1dActivation(
                     self.config["Mol_out_channels_start"],
                     self.config["Mol_out_channels_start"] // 2,
                     self.config["Mol_kernel_size"],
                     padding="same",
+                    initializer=initi,
+                    negative_slope=self.config["LRelu_negative_slope"],
+                    saturation=self.config["LRelu_saturation"],
                 )
             )
             self.MolDesc.append(
-                LRelu_with_saturation(
-                    self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
-                )
-            )
-            self.MolDesc.append(
-                nn.Conv1d(
+                Conv1dActivation(
                     self.config["Mol_out_channels_start"] // 2,
                     self.config["Mol_out_channels_start"] // 2,
                     self.config["Mol_kernel_size"],
                     padding="same",
-                )
-            )
-            self.MolDesc.append(
-                LRelu_with_saturation(
-                    self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                    initializer=initi,
+                    negative_slope=self.config["LRelu_negative_slope"],
+                    saturation=self.config["LRelu_saturation"],
                 )
             )
             self.MolDesc.append(
@@ -325,39 +332,33 @@ class IM2Deep(L.LightningModule):
                 )
             )
             self.MolDesc.append(
-                nn.Conv1d(
+                Conv1dActivation(
                     self.config["Mol_out_channels_start"] // 2,
                     self.config["Mol_out_channels_start"] // 4,
                     self.config["Mol_kernel_size"],
                     padding="same",
-                )
-            )  # Input is probably 128 now?
-            self.MolDesc.append(
-                LRelu_with_saturation(
-                    self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                    initializer=initi,
+                    negative_slope=self.config["LRelu_negative_slope"],
+                    saturation=self.config["LRelu_saturation"],
                 )
             )
             self.MolDesc.append(
-                nn.Conv1d(
+                Conv1dActivation(
                     self.config["Mol_out_channels_start"] // 4,
                     self.config["Mol_out_channels_start"] // 4,
                     self.config["Mol_kernel_size"],
                     padding="same",
-                )
-            )
-            self.MolDesc.append(
-                LRelu_with_saturation(
-                    self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+                    initializer=initi,
+                    negative_slope=self.config["LRelu_negative_slope"],
+                    saturation=self.config["LRelu_saturation"],
                 )
             )
             self.MolDesc.append(nn.Flatten())
 
-            # Calculate the output size of the MolDesc layers
             ConvMolDescSize = (60 // (2 * self.config["Mol_MaxPool_kernel_size"])) * (
                 self.config["Mol_out_channels_start"] // 4
             )
 
-        # Calculate the total input size for the Concat layer
         total_input_size = (
             ConvAtomCompSize
             + ConvDiAtomCompSize
@@ -368,52 +369,67 @@ class IM2Deep(L.LightningModule):
         if config["add_X_mol"]:
             total_input_size += ConvMolDescSize
 
-        print(total_input_size)
-
         self.total_input_size = total_input_size
 
-        # Concatenate
         self.Concat = nn.ModuleList()
-        self.Concat.append(nn.Linear(total_input_size, self.config["Concat_units"]))
         self.Concat.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.total_input_size,
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.Concat.append(nn.Linear(self.config["Concat_units"], self.config["Concat_units"]))
         self.Concat.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.Concat.append(nn.Linear(self.config["Concat_units"], self.config["Concat_units"]))
         self.Concat.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.Concat.append(nn.Linear(self.config["Concat_units"], self.config["Concat_units"]))
         self.Concat.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
-        self.Concat.append(nn.Linear(self.config["Concat_units"], self.config["Concat_units"]))
         self.Concat.append(
-            LRelu_with_saturation(
-                self.config["LRelu_negative_slope"], self.config["LRelu_saturation"]
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
             )
         )
 
         self.Concat.append(nn.Linear(self.config["Concat_units"], 1))
 
+    def regularized_loss(self, y_hat, y):
+        standard_loss = self.criterion(y_hat, y)
+        l1_norm = sum(torch.norm(p, 1) for p in self.parameters())
+        return standard_loss + self.config["L1_alpha"] * l1_norm
+
     def forward(self, atom_comp, diatom_comp, global_feats, one_hot, mol_desc=None):
+
         atom_comp = atom_comp.permute(0, 2, 1)
         diatom_comp = diatom_comp.permute(0, 2, 1)
         one_hot = one_hot.permute(0, 2, 1)
-
-        # if self.config["add_X_mol"]:
-        #     mol_desc = mol_desc.permute(0, 2, 1)
 
         for layer in self.ConvAtomComp:
             atom_comp = layer(atom_comp)
@@ -448,7 +464,7 @@ class IM2Deep(L.LightningModule):
             atom_comp, diatom_comp, global_feats, one_hot, y = batch
             y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
 
-        loss = self.criterion(y_hat, y)
+        loss = self.regularized_loss(y_hat, y)
 
         self.log("Train loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log(
@@ -513,3 +529,245 @@ class IM2Deep(L.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
         return optimizer
+
+    def configure_init(self):
+        if (not self.config['init']) or (self.config['init'] == 'normal'):
+            return nn.init.normal_
+        if self.config['init'] == 'xavier':
+            return nn.init.xavier_normal_
+        if self.config['init'] == 'kaiming':
+            return nn.init.kaiming_normal_
+
+class IM2DeepLSTM(L.LightningModule):
+    def __init__(self, config, criterion):
+        super(IM2DeepLSTM, self).__init__()
+        self.config = config
+        self.criterion = criterion
+        self.mae = nn.L1Loss()
+
+        initi = self.configure_init()
+
+        self.LSTMAtomComp = nn.LSTM(
+            6,
+            256,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True)
+
+        self.LSTMDiatomComp = nn.LSTM(
+            6,
+            128,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True)
+
+        self.Global = nn.ModuleList()
+        self.Global.append(
+            DenseActivation(
+                60,
+                self.config["Global_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Global.append(
+            DenseActivation(
+                self.config["Global_units"],
+                self.config["Global_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Global.append(
+            DenseActivation(
+                self.config["Global_units"],
+                self.config["Global_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+
+        self.OneHot = nn.LSTM(
+            20,
+            10,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True)
+
+        if config["add_X_mol"]:
+            self.MolDesc = nn.LSTM(
+                13,
+                128,
+                num_layers=1,
+                batch_first=True,
+                bidirectional=True)
+
+        total_input_size = 256*2 + 128*2 + 16 + 10*2
+        if config["add_X_mol"]:
+            total_input_size += 128*2
+
+        self.total_input_size = total_input_size
+
+        self.Concat = nn.ModuleList()
+        self.Concat.append(
+            DenseActivation(
+                self.total_input_size,
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+
+        self.Concat.append(nn.Linear(self.config["Concat_units"], 1))
+
+    def regularized_loss(self, y_hat, y):
+        standard_loss = self.criterion(y_hat, y)
+        l1_norm = sum(torch.norm(p, 1) for p in self.parameters())
+        return standard_loss + self.config["L1_alpha"] * l1_norm
+
+    def forward(self, atom_comp, diatom_comp, global_feats, one_hot, mol_desc=None):
+        mol_desc = mol_desc.permute(0, 2, 1)
+
+        atom_comp, _ = self.LSTMAtomComp(atom_comp)
+        diatom_comp, _ = self.LSTMDiatomComp(diatom_comp)
+
+        for layer in self.Global:
+            global_feats = layer(global_feats)
+
+        one_hot, _ = self.OneHot(one_hot)
+
+        if self.config["add_X_mol"]:
+            mol_desc, _ = self.MolDesc(mol_desc)
+
+        concatenated = torch.cat((atom_comp[:, -1, :], diatom_comp[:, -1, :], one_hot[:, -1, :], global_feats), 1)
+
+        if self.config["add_X_mol"]:
+            concatenated = torch.cat((concatenated, mol_desc[:, -1, :]), 1)
+
+        for layer in self.Concat:
+            concatenated = layer(concatenated)
+
+        output = concatenated
+        return output
+
+    def training_step(self, batch, batch_idx):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+
+        loss = self.regularized_loss(y_hat, y)
+
+        self.log("Train loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Train MAE",
+            self.mae(y_hat, y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+        loss = self.criterion(y_hat, y)
+
+        self.log("Validation loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Validation MAE",
+            self.mae(y_hat, y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+        loss = self.criterion(y_hat, y)
+
+        self.log("Test loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Test MAE",
+            self.mae(y_hat, y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return loss
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=None):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+        return y_hat
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
+        return optimizer
+
+    def configure_init(self):
+        if (not self.config['init']) or (self.config['init'] == 'normal'):
+            return nn.init.normal_
+        if self.config['init'] == 'xavier':
+            return nn.init.xavier_normal_
+        if self.config['init'] == 'kaiming':
+            return nn.init.kaiming_normal_

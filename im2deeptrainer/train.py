@@ -4,8 +4,9 @@ import logging
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
 from lightning.pytorch.loggers import WandbLogger
+# from pytorchsummary import summary
 
-from im2deeptrainer.model import IM2Deep
+from im2deeptrainer.model import IM2Deep, IM2DeepLSTM
 from im2deeptrainer.model import LogLowestMAE
 
 torch.set_float32_matmul_precision('high')
@@ -16,8 +17,7 @@ def _data_to_dataloaders(data, batch_size, shuffle=True):
     for key in data.keys():
         tensors[key] = torch.tensor(
             data[key], dtype=torch.float32
-        )  # TODO: check if dtype is correct, for y this is not specified in IM2DeepMulti
-        logger.debug(tensors[key].shape)
+        )
 
     dataset = torch.utils.data.TensorDataset(*[tensors[key] for key in data.keys()])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
@@ -28,7 +28,6 @@ def _get_dataloaders(data, batch_size):
     train_dataloader = _data_to_dataloaders(data["train"], batch_size, shuffle=True)
     valid_dataloader = _data_to_dataloaders(data["valid"], batch_size, shuffle=False)
     test_dataloader = _data_to_dataloaders(data["test"], batch_size, shuffle=False)
-    logger.debug(len(test_dataloader))
     return train_dataloader, valid_dataloader, test_dataloader
 
 def _setup_callbacks(model_config, output_path):
@@ -53,16 +52,18 @@ def _setup_wandb_logger(wandb_config, model):
 def train_model(data, model_config, output_path):
     wandb_config = model_config["wandb"]
     train_data, valid_data, test_data = _get_dataloaders(data, model_config["batch_size"])
-    model = IM2Deep(model_config, criterion=nn.L1Loss())
-    logger.debug(model)
+    model = IM2DeepLSTM(model_config, criterion=nn.L1Loss())
+    logger.info(model)
+    # modelsummary = summary(model, [(1, 6, 60), (1, 6, 30), (1,60), (1, 6, 20)])
+    # logger.info(modelsummary)
 
     callbacks = _setup_callbacks(model_config, output_path)
     if wandb_config["enabled"]:
         wandb_logger = _setup_wandb_logger(wandb_config, model)
 
     trainer = L.Trainer(
-        accelerator="gpu",
-        devices=[model_config["device"]],
+        accelerator="auto",
+        # devices=[model_config["device"]],
         max_epochs=model_config["epochs"],
         enable_progress_bar=True,
         callbacks=callbacks,
@@ -73,7 +74,7 @@ def train_model(data, model_config, output_path):
 
     # Load best model
     if model_config["use_best_model"]:
-        model = IM2Deep.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
+        model = IM2DeepLSTM.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
 
     return trainer, model, test_data
     #TODO: save full model?

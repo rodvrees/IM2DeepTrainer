@@ -63,7 +63,6 @@ def main(config, *args, **kwargs):
     config = _parse_config(config)
     model_config = _setup_wandb(config)
     data, test_df = data_extraction(config)
-    logger.debug(test_df.head())
     trainer, model, test_loader = train_model(data, model_config, output_path=config["output_path"])
     evaluate_and_plot(trainer, model, test_loader, test_df, config)
     logger.info("Finished IM2DeepTrainer")
