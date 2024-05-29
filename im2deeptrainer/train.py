@@ -6,7 +6,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgr
 from lightning.pytorch.loggers import WandbLogger
 # from pytorchsummary import summary
 
-from im2deeptrainer.model import IM2Deep, IM2DeepLSTM
+from im2deeptrainer.model import IM2Deep, IM2DeepLSTM, IM2DeepMulti
 from im2deeptrainer.model import LogLowestMAE
 
 torch.set_float32_matmul_precision('high')
@@ -52,7 +52,11 @@ def _setup_wandb_logger(wandb_config, model):
 def train_model(data, model_config, output_path):
     wandb_config = model_config["wandb"]
     train_data, valid_data, test_data = _get_dataloaders(data, model_config["batch_size"])
-    model = IM2DeepLSTM(model_config, criterion=nn.L1Loss())
+    if (model_config["multi-output"] == False) or (model_config.get("multi-output") == None):
+        model = IM2Deep(model_config, criterion=nn.L1Loss())
+    else:
+        model = IM2DeepMulti(model_config, criterion=nn.L1Loss())
+
     logger.info(model)
     # modelsummary = summary(model, [(1, 6, 60), (1, 6, 30), (1,60), (1, 6, 20)])
     # logger.info(modelsummary)
@@ -62,8 +66,8 @@ def train_model(data, model_config, output_path):
         wandb_logger = _setup_wandb_logger(wandb_config, model)
 
     trainer = L.Trainer(
-        accelerator="auto",
-        # devices=[model_config["device"]],
+        accelerator="gpu",
+       # devices=[model_config["device"]],
         max_epochs=model_config["epochs"],
         enable_progress_bar=True,
         callbacks=callbacks,
@@ -73,8 +77,10 @@ def train_model(data, model_config, output_path):
     trainer.fit(model, train_data, valid_data)
 
     # Load best model
-    if model_config["use_best_model"]:
-        model = IM2DeepLSTM.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
+    if model_config["use_best_model"] and (model_config["multi-output"] == False or model_config.get("multi-output") == None):
+        model = IM2Deep.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
+    elif model_config["use_best_model"] and model_config["multi-output"]:
+        model = IM2DeepMulti.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
 
     return trainer, model, test_data
     #TODO: save full model?

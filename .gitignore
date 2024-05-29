@@ -2,6 +2,7 @@
 
 # Custom IM2DeepTrainer stuff
 test_data/*
+IM2DeepData/*
 wandb/
 
 # Pytest

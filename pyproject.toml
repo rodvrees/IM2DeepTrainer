@@ -53,6 +53,9 @@ im2deep = "im2deeptrainer.__main__:main"
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+packages = ['im2deeptrainer']
+
 [tool.setuptools.dynamic]
 version = {attr = "im2deeptrainer.__version__"}
 

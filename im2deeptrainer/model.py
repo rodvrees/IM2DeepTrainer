@@ -1,8 +1,11 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import lightning as L
 import logging
 import wandb
+
+from utils import BASEMODELCONFIG, MeanMAESorted, LowestMAESorted
 # from pytorchsummary import summary
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,56 @@ class DenseActivation(nn.Module):
     def forward(self, x):
         return self.activation(self.linear(x))
 
+class SelfAttention(nn.Module):
+    def __init__(self, feature_dim, heads=1):
+        super(SelfAttention, self).__init__()
+        self.feature_dim = feature_dim
+        self.heads = heads
+        # self.padded_dim = self.feature_dim + (self.feature_dim % self.heads)
+        self.query_dim = self.feature_dim // self.heads
+        self.extra_dim = self.feature_dim % self.heads
+
+        self.query = nn.Linear(self.feature_dim, (self.query_dim + (self.extra_dim if self.extra_dim > 0 else 0)) * self.heads)
+        self.key = nn.Linear(self.feature_dim, (self.query_dim + (self.extra_dim if self.extra_dim >0 else 0)) * self.heads)
+        self.value = nn.Linear(self.feature_dim, (self.query_dim + (self.extra_dim if self.extra_dim > 0 else 0)) * self.heads)
+
+        self.fc_out = nn.Linear(self.feature_dim, self.feature_dim)
+
+    def forward(self, x):
+
+        batch_size, seq_len, feature_dim = x.size()
+        queries = self.query(x).view(batch_size, seq_len, self.heads, self.query_dim + (self.extra_dim if self.extra_dim > 0 else 0))
+        keys = self.key(x).view(batch_size, seq_len, self.heads, self.query_dim + (self.extra_dim if self.extra_dim > 0 else 0))
+        values = self.value(x).view(batch_size, seq_len, self.heads, self.query_dim + (self.extra_dim if self.extra_dim > 0 else 0))
+
+        attention_scores = torch.einsum('bqhd,bkhd->bhqk', [queries, keys]) / (self.query_dim ** 0.5)
+        attention_scores = F.softmax(attention_scores, dim=-1)
+
+        out = torch.einsum('bhqk,bkhd->bqhd', [attention_scores, values])
+
+        out = out.view(batch_size, seq_len, self.heads * (self.query_dim + (self.extra_dim if self.extra_dim > 0 else 0)))
+        out = out[:, :, :self.feature_dim]
+        out = self.fc_out(out)
+        return out
+
+class Branch(nn.Module):
+    def __init__(self, input_size, output_size, add_layer=1, dropout_rate=0.0):
+        super(Branch, self).__init__()
+        self.add_layer = add_layer
+        if self.add_layer:
+            self.fc1 = nn.Linear(input_size, output_size)
+            # self.dropout = nn.Dropout(dropout_rate)
+            self.fcoutput = nn.Linear(output_size, 1)
+        else:
+            self.fcoutput = nn.Linear(input_size, 1)
+
+    def forward(self, x):
+        if self.add_layer == 1:
+            x = F.relu(self.fc1(x))
+            # x = self.dropout(x)
+        x = self.fcoutput(x)
+
+        return x
 
 class IM2Deep(L.LightningModule):
     def __init__(self, config, criterion):
@@ -549,15 +602,15 @@ class IM2DeepLSTM(L.LightningModule):
 
         self.LSTMAtomComp = nn.LSTM(
             6,
-            256,
-            num_layers=1,
+            1024,
+            num_layers=3,
             batch_first=True,
             bidirectional=True)
 
         self.LSTMDiatomComp = nn.LSTM(
             6,
-            128,
-            num_layers=1,
+            512,
+            num_layers=3,
             batch_first=True,
             bidirectional=True)
 
@@ -592,22 +645,22 @@ class IM2DeepLSTM(L.LightningModule):
 
         self.OneHot = nn.LSTM(
             20,
-            10,
-            num_layers=1,
+            80,
+            num_layers=3,
             batch_first=True,
             bidirectional=True)
 
         if config["add_X_mol"]:
             self.MolDesc = nn.LSTM(
                 13,
-                128,
-                num_layers=1,
+                256,
+                num_layers=2,
                 batch_first=True,
                 bidirectional=True)
 
-        total_input_size = 256*2 + 128*2 + 16 + 10*2
+        total_input_size = 1024*2 + 512*2 + 256 + 80*2
         if config["add_X_mol"]:
-            total_input_size += 128*2
+            total_input_size += 256*2
 
         self.total_input_size = total_input_size
 
@@ -666,7 +719,8 @@ class IM2DeepLSTM(L.LightningModule):
         return standard_loss + self.config["L1_alpha"] * l1_norm
 
     def forward(self, atom_comp, diatom_comp, global_feats, one_hot, mol_desc=None):
-        mol_desc = mol_desc.permute(0, 2, 1)
+        if self.config["add_X_mol"]:
+            mol_desc = mol_desc.permute(0, 2, 1)
 
         atom_comp, _ = self.LSTMAtomComp(atom_comp)
         diatom_comp, _ = self.LSTMDiatomComp(diatom_comp)
@@ -771,3 +825,135 @@ class IM2DeepLSTM(L.LightningModule):
             return nn.init.xavier_normal_
         if self.config['init'] == 'kaiming':
             return nn.init.kaiming_normal_
+
+
+
+class IM2DeepMulti(L.LightningModule):
+    def __init__(self, config, criterion):
+        super(IM2DeepMulti, self).__init__()
+        # TODO: config should be adapted in config file
+        self.config = config
+        self.criterion = criterion
+        self.l1_alpha = config['L1_alpha']
+
+        # Load the IM2Deep model
+        try:
+            self.backbone(IM2Deep(config['backbone_config']))
+        except KeyError:
+            self.backbone = IM2Deep(BASEMODELCONFIG)
+
+        try:
+            self.backbone.load_state_dict(torch.load(config['backbone_SD_path']))
+        except KeyError:
+            self.backbone.load_state_dict(torch.load('/home/robbe/IM2DeepMulti/BestParams_final_model_state_dict.pth'))
+
+        self.ConvAtomComp = self.backbone.ConvAtomComp
+        self.ConvDiatomComp = self.backbone.ConvDiatomComp
+        self.ConvGlobal = self.backbone.ConvGlobal
+        self.OneHot = self.backbone.OneHot
+
+        self.concat = list(self.backbone.Concat.children())[:-1]
+
+        if self.config['Use_attention_concat'] == 1:
+            # TODO: don't hardcode the input size, write a function to get the input size
+            self.SelfAttentionConcat = SelfAttention(1841, config['Concatheads'])
+        if self.config['Use_attention_output'] == 1:
+            self.SelfAttentionOutput = SelfAttention(94, config['Outputheads'])
+
+        # TODO: idem
+        self.branches = nn.ModuleList([Branch(94, config['BranchSize'], add_layer=config['Add_branch_layer']),
+                                       Branch(94, config['BranchSize'], add_layer=config['Add_branch_layer'])])
+
+    def forward(self, atom_comp, diatom_comp, global_feats, one_hot, mol_desc=None):
+        atom_comp = atom_comp.permute(0, 2, 1)
+        diatom_comp = diatom_comp.permute(0, 2, 1)
+        one_hot = one_hot.permute(0, 2, 1)
+
+        for layer in self.ConvAtomComp:
+            atom_comp = layer(atom_comp)
+
+        for layer in self.ConvDiatomComp:
+            diatom_comp = layer(diatom_comp)
+
+        for layer in self.ConvGlobal:
+            global_feats = layer(global_feats)
+
+        for layer in self.OneHot:
+            one_hot = layer(one_hot)
+
+        # TODO: mol_desc for multioutput
+
+        concatenated = torch.cat((atom_comp, diatom_comp, one_hot, global_feats), 1)
+
+        if self.config['Use_attention_concat'] == 1:
+            concatenated = self.SelfAttentionConcat(concatenated.unsqueeze(1)).squeeze(1)
+
+        for layer in self.concat:
+            concatenated = layer(concatenated)
+
+        if self.config['Use_attention_output'] == 1:
+            concatenated = self.SelfAttentionOutput(concatenated.unsqueeze(1)).squeeze(1)
+
+        y_hat1 = self.branches[0](concatenated)
+        y_hat2 = self.branches[1](concatenated)
+
+        return y_hat1, y_hat2
+
+    def training_step(self, batch, batch_idx):
+        atom_comp, diatom_comp, global_feats, one_hot, y = batch
+        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+
+        y1, y2 = y[:, 0], y[:, 1]
+
+        loss = self.criterion(y1, y2, y_hat1, y_hat2)
+
+        l1_norm = sum(p.abs().sum() for p in self.parameters())
+        total_loss = loss + self.l1_alpha * l1_norm
+
+        meanmae = MeanMAESorted(y1, y2, y_hat1, y_hat2)
+        lowestmae = LowestMAESorted(y1, y2, y_hat1, y_hat2)
+
+        self.log('Train Loss', total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Train Mean MAE', meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Train Lowest MAE', lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        return total_loss
+
+    def validation_step(self, batch, batch_idx):
+        atom_comp, diatom_comp, global_feats, one_hot, y = batch
+        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+
+        y1, y2 = y[:, 0], y[:, 1]
+
+        loss = self.criterion(y1, y2, y_hat1, y_hat2)
+
+        meanmae = MeanMAESorted(y1, y2, y_hat1, y_hat2)
+        lowestmae = LowestMAESorted(y1, y2, y_hat1, y_hat2)
+
+        self.log('Val Loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Val Mean MAE', meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Val Lowest MAE', lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        atom_comp, diatom_comp, global_feats, one_hot, y = batch
+        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+
+        y1, y2 = y[:, 0], y[:, 1]
+
+        loss = self.criterion(y1, y2, y_hat1, y_hat2)
+        meanmae = MeanMAESorted(y1, y2, y_hat1, y_hat2)
+        lowestmae = LowestMAESorted(y1, y2, y_hat1, y_hat2)
+
+        self.log('Test Loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Test Mean MAE', meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('Test Lowest MAE', lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def predict_step(self, batch):
+        atom_comp, diatom_comp, global_feats, one_hot, y = batch
+        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+        return torch.hstack([y_hat1, y_hat2])
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config['learning_rate'])
+        return optimizer
