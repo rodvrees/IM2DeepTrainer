@@ -107,7 +107,7 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
     except KeyError:
         targets = test_df["tr"].to_numpy()
 
-    if not config["model_params"]["multi-output"]:
+    if config.get("multi-output", False) == False:
 
         test_mae, test_mean_pearson_r, test_mre = _evaluate_predictions(predictions, targets)
 

@@ -2,8 +2,23 @@ import torch
 import torch.nn as nn
 from scipy.stats import pearsonr
 
-
 MAE = nn.L1Loss()
+
+BASEMODELCONFIG = {
+        "AtomComp_kernel_size": 4,
+        "DiatomComp_kernel_size": 4,
+        "One_hot_kernel_size": 4,
+        "AtomComp_out_channels_start": 356,
+        "DiatomComp_out_channels_start": 65,
+        "Global_units": 20,
+        "OneHot_out_channels": 1,
+        "Concat_units": 94,
+        "AtomComp_MaxPool_kernel_size": 2,
+        "DiatomComp_MaxPool_kernel_size": 2,
+        "OneHot_MaxPool_kernel_size": 10,
+        "LRelu_negative_slope": 0.013545684190756122,
+        "LRelu_saturation": 40,
+        }
 
 class FlexibleLossSorted(nn.Module):
     def __init__(self, diversity_weight=0.1):
@@ -134,20 +149,17 @@ def MeanMRE(y1, y2, y_hat1, y_hat2):
     mre2 = torch.mean(torch.abs((y_hat2 - y2) / y2))
     return (mre1 + mre2) / 2
 
-BASEMODELCONFIG = {
-        "AtomComp_kernel_size": 4,
-        "DiatomComp_kernel_size": 4,
-        "One_hot_kernel_size": 4,
-        "AtomComp_out_channels_start": 356,
-        "DiatomComp_out_channels_start": 65,
-        "Global_units": 20,
-        "OneHot_out_channels": 1,
-        "Concat_units": 94,
-        "AtomComp_MaxPool_kernel_size": 2,
-        "DiatomComp_MaxPool_kernel_size": 2,
-        "OneHot_MaxPool_kernel_size": 10,
-        "LRelu_negative_slope": 0.013545684190756122,
-        "LRelu_saturation": 40,
-        }
+def calculate_concat_shape(config):
+    atom_comp_out_shape = (60 // (2 * config["AtomComp_MaxPool_kernel_size"])) * (config["AtomComp_out_channels_start"] // 4)
+    diatom_comp_out_shape = (30 // (config["DiatomComp_MaxPool_kernel_size"])) * (config["DiatomComp_out_channels_start"] // 2)
+    globals_out_shape = config["Global_units"]
+    onehot_comp_out_shape = (60 // (config["OneHot_MaxPool_kernel_size"])) * config["OneHot_out_channels"]
 
+    if config['add_X_mol']:
+        mol_desc_comp_out_shape = (60 // (2 * config["Mol_MaxPool_kernel_size"])) * (config["Mol_out_channels_start"] // 4)
+        total_input_size = atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape + mol_desc_comp_out_shape
+    else:
+        total_input_size = atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape
+
+    return total_input_size
 
