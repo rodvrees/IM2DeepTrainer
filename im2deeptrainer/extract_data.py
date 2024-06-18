@@ -107,7 +107,7 @@ def _get_mol_matrix(feat_df, features=MOL_FEATS):
         )
     return np.array(mol_feats)
 
-def _get_matrices(df, split_name, add_X_mol=True, add_charge_dupe_feat=False):
+def _get_matrices(df, split_name, add_X_mol=True):
     # TODO: memory inneficient, fix
     if "tr" not in df.columns:
         if "CCS" not in df.columns:
@@ -117,18 +117,24 @@ def _get_matrices(df, split_name, add_X_mol=True, add_charge_dupe_feat=False):
 
     logger.debug(len(df))
 
+    # PSM class, used by DeepLC in get_feat_df, cannot handle 2 values for CCS/TR. This is a workaround but should be fixed in the future
+    df['tr_temp'] = df['tr']
+    df['tr'] = 0
+
     feat_df = get_feat_df(df, predict_ccs=True)
     feat_df["charge"] = df["charge"]
     feat_df["seq"] = df["seq"]
     feat_df["modifications"] = df["modifications"]
+    feat_df["tr"] = df['tr_temp'].to_numpy()
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
+
 
     data = {
         f"X_{split_name}_AtomEnc": X,
         f"X_{split_name}_DiAminoAtomEnc": X_sum,
         f"X_{split_name}_GlobalFeatures": X_global,
         f"X_{split_name}_OneHot": X_hc,
-        f"y_{split_name}": y,
+        f"y_{split_name}": np.array([np.array(y_i) for y_i in y]),
     }
 
     if add_X_mol:
@@ -139,7 +145,10 @@ def _get_matrices(df, split_name, add_X_mol=True, add_charge_dupe_feat=False):
 
 
 def data_extraction(config):
-    data = pd.read_csv(config["data_path"])
+    try:
+        data = pd.read_csv(config["data_path"])
+    except UnicodeDecodeError:
+        data = pd.read_pickle(config["data_path"])
     logger.debug(len(data))
 
     if config["remove_charge_dupes"]:
@@ -148,6 +157,9 @@ def data_extraction(config):
 
     try:
         ccs_df_test = pd.read_csv(config["test_data_path"])
+        ccs_df_train = data
+    except UnicodeDecodeError:
+        ccs_df_test = pd.read_pickle(config['test_data_path'])
         ccs_df_train = data
     except KeyError:
         ccs_df_train, ccs_df_test = _train_test_split(data, config["test_split"])

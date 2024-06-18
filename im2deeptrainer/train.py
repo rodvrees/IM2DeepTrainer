@@ -6,8 +6,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgr
 from lightning.pytorch.loggers import WandbLogger
 # from pytorchsummary import summary
 
-from im2deeptrainer.model import IM2Deep, IM2DeepLSTM, IM2DeepMulti
-from im2deeptrainer.model import LogLowestMAE
+from im2deeptrainer.model import IM2Deep, IM2DeepLSTM, IM2DeepMulti, LogLowestMAE
+from im2deeptrainer.utils import FlexibleLossSorted
 
 torch.set_float32_matmul_precision('high')
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 def _data_to_dataloaders(data, batch_size, shuffle=True):
     tensors = {}
     for key in data.keys():
+        logger.debug(data[key])
         tensors[key] = torch.tensor(
             data[key], dtype=torch.float32
         )
@@ -22,7 +23,6 @@ def _data_to_dataloaders(data, batch_size, shuffle=True):
     dataset = torch.utils.data.TensorDataset(*[tensors[key] for key in data.keys()])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     return dataloader
-
 
 def _get_dataloaders(data, batch_size):
     train_dataloader = _data_to_dataloaders(data["train"], batch_size, shuffle=True)
@@ -55,7 +55,7 @@ def train_model(data, model_config, output_path):
     if (model_config.get("multi-output", False) == False):
         model = IM2Deep(model_config, criterion=nn.L1Loss())
     else:
-        model = IM2DeepMulti(model_config, criterion=nn.L1Loss()) # TODO change criterion to Sorted
+        model = IM2DeepMulti(model_config, criterion=FlexibleLossSorted(model_config['diversity_weight']))
 
     logger.info(model)
     # modelsummary = summary(model, [(1, 6, 60), (1, 6, 30), (1,60), (1, 6, 20)])

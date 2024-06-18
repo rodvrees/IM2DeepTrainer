@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import logging
 import torch
 from scipy import stats
-from utils import MeanMAESorted, LowestMAESorted, MeanPearsonRSorted, MeanMRE
+from im2deeptrainer.utils import MeanMAESorted, LowestMAESorted, MeanPearsonRSorted, MeanMRE
 
 logger = logging.getLogger(__name__)
 

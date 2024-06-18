@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 from scipy.stats import pearsonr
+import logging
+
+logger = logging.getLogger(__name__)
 
 MAE = nn.L1Loss()
 
@@ -151,13 +154,19 @@ def MeanMRE(y1, y2, y_hat1, y_hat2):
 
 def calculate_concat_shape(config):
     atom_comp_out_shape = (60 // (2 * config["AtomComp_MaxPool_kernel_size"])) * (config["AtomComp_out_channels_start"] // 4)
+    logger.debug(f"AtomComp out shape: {atom_comp_out_shape}")
     diatom_comp_out_shape = (30 // (config["DiatomComp_MaxPool_kernel_size"])) * (config["DiatomComp_out_channels_start"] // 2)
+    logger.debug(f"DiatomComp out shape: {diatom_comp_out_shape}")
     globals_out_shape = config["Global_units"]
+    logger.debug(f"Globals out shape: {globals_out_shape}")
     onehot_comp_out_shape = (60 // (config["OneHot_MaxPool_kernel_size"])) * config["OneHot_out_channels"]
+    logger.debug(f"OneHot out shape: {onehot_comp_out_shape}")
 
     if config['add_X_mol']:
         mol_desc_comp_out_shape = (60 // (2 * config["Mol_MaxPool_kernel_size"])) * (config["Mol_out_channels_start"] // 4)
+        logger.debug(f"MolDesc out shape: {mol_desc_comp_out_shape}")
         total_input_size = atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape + mol_desc_comp_out_shape
+
     else:
         total_input_size = atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape
 

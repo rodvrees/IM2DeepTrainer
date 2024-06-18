@@ -6,7 +6,7 @@ import lightning as L
 import logging
 import wandb
 
-from utils import BASEMODELCONFIG, MeanMAESorted, LowestMAESorted, calculate_concat_shape
+from im2deeptrainer.utils import BASEMODELCONFIG, MeanMAESorted, LowestMAESorted, calculate_concat_shape
 
 # from pytorchsummary import summary
 
@@ -19,7 +19,10 @@ class LogLowestMAE(L.Callback):
         self.bestMAE = float("inf")
 
     def on_validation_end(self, trainer, pl_module):
-        currentMAE = trainer.callback_metrics["Validation MAE"]
+        try:
+            currentMAE = trainer.callback_metrics["Validation MAE"]
+        except KeyError: #Multi
+            currentMAE = trainer.callback_metrics["Val Mean MAE"]
         if currentMAE < self.bestMAE:
             self.bestMAE = currentMAE
         wandb.log({"Best Val MAE": self.bestMAE})
@@ -456,20 +459,6 @@ class IM2Deep(L.LightningModule):
             )
             self.MolDesc.append(nn.Flatten())
 
-            ConvMolDescSize = (60 // (2 * self.config["Mol_MaxPool_kernel_size"])) * (
-                self.config["Mol_out_channels_start"] // 4
-            )
-
-        # total_input_size = (
-        #     ConvAtomCompSize
-        #     + ConvDiAtomCompSize
-        #     + ConvGlobal_output_size
-        #     + conv_output_size_OneHot
-        # )
-
-        # if config["add_X_mol"]:
-        #     total_input_size += ConvMolDescSize
-
         self.total_input_size = calculate_concat_shape(self.config)
         logger.debug(f"Total input size: {self.total_input_size}")
 
@@ -650,12 +639,12 @@ class IM2DeepMulti(L.LightningModule):
 
         # Load the IM2Deep model
         try:
-            self.backbone = IM2Deep(config)
+            self.backbone = IM2Deep(config, nn.L1Loss())
         except KeyError: #TODO: This is not gonna have to be another error I think
             self.backbone = IM2Deep(BASEMODELCONFIG)
 
         try:
-            self.backbone.load_state_dict(torch.load(config["backbone_SD_path"]))
+            self.backbone.load_state_dict(torch.load(config["backbone_SD_path"])['state_dict'])
         except KeyError:
             try:
                 self.backbone.load_state_dict(
@@ -667,16 +656,18 @@ class IM2DeepMulti(L.LightningModule):
                     "State dict incompatible with model. Make sure the model configuration is correct."
                 )
                 sys.exit(1)
-        except RuntimeError:
+        except RuntimeError as e:
             logger.error(
                 "State dict incompatible with model. Make sure the model configuration is correct."
             )
+            logger.error(e)
             sys.exit(1)
 
         self.ConvAtomComp = self.backbone.ConvAtomComp
         self.ConvDiatomComp = self.backbone.ConvDiatomComp
         self.ConvGlobal = self.backbone.ConvGlobal
         self.OneHot = self.backbone.OneHot
+        self.MolDesc = self.backbone.MolDesc
 
         self.concat = list(self.backbone.Concat.children())[:-1]
 
@@ -686,17 +677,15 @@ class IM2DeepMulti(L.LightningModule):
         except KeyError:
             self.output_size = BASEMODELCONFIG["Concat_units"]
 
-        if self.config["Use_attention_concat"] == 1:
-            # TODO: don't hardcode the input size, write a function to get the input size
-            self.SelfAttentionConcat = SelfAttention(self.concat_input_size, config["Concatheads"])
-        if self.config["Use_attention_output"] == 1:
-            self.SelfAttentionOutput = SelfAttention(94, config["Outputheads"])
+        if self.config.get("Use_attention_concat", 0) == 1:
+            self.SelfAttentionConcat = SelfAttention(self.concat_input_size, config.get("Concatheads", 1))
+        if self.config.get("Use_attention_output", 0) == 1:
+            self.SelfAttentionOutput = SelfAttention(config['Concat_units'], config.get("Outputheads", 1))
 
-        # TODO: idem
         self.branches = nn.ModuleList(
             [
-                Branch(94, config["BranchSize"], add_layer=config["Add_branch_layer"]),
-                Branch(94, config["BranchSize"], add_layer=config["Add_branch_layer"]),
+                Branch(config['Concat_units'], config["BranchSize"], add_layer=config.get("add_branch_layer", 0)),
+                Branch(config['Concat_units'], config["BranchSize"], add_layer=config.get("add_branch_layer", 0)),
             ]
         )
 
@@ -705,30 +694,53 @@ class IM2DeepMulti(L.LightningModule):
         diatom_comp = diatom_comp.permute(0, 2, 1)
         one_hot = one_hot.permute(0, 2, 1)
 
+        logger.debug(f"Initial atom_comp shape: {atom_comp.shape}")
+        logger.debug(f"Initial diatom_comp shape: {diatom_comp.shape}")
+        logger.debug(f"Initial one_hot shape: {one_hot.shape}")
+        logger.debug(f"Initial global_feats shape: {global_feats.shape}")
+
         for layer in self.ConvAtomComp:
             atom_comp = layer(atom_comp)
+            logger.debug(f"atom_comp shape after {layer}: {atom_comp.shape}")
 
         for layer in self.ConvDiatomComp:
             diatom_comp = layer(diatom_comp)
+            logger.debug(f"diatom_comp shape after {layer}: {diatom_comp.shape}")
+
 
         for layer in self.ConvGlobal:
             global_feats = layer(global_feats)
+            logger.debug(f"global_feats shape after {layer}: {global_feats.shape}")
+
 
         for layer in self.OneHot:
             one_hot = layer(one_hot)
+            logger.debug(f"one_hot shape after {layer}: {one_hot.shape}")
 
-        # TODO: mol_desc for multioutput
+
+        if self.config["add_X_mol"]:
+            logger.debug(f"Initial mol_desc shape: {mol_desc.shape}")
+            for layer in self.MolDesc:
+                mol_desc = layer(mol_desc)
+                logger.debug(f"mol_desc shape after {layer}: {mol_desc.shape}")
+
 
         concatenated = torch.cat((atom_comp, diatom_comp, one_hot, global_feats), 1)
 
+        if self.config["add_X_mol"]:
+            concatenated = torch.cat((concatenated, mol_desc), 1)
+        logger.debug(f"Concatenated shape: {concatenated.shape}")
+
         if self.config["Use_attention_concat"] == 1:
             concatenated = self.SelfAttentionConcat(concatenated.unsqueeze(1)).squeeze(1)
+            logger.debug(f"Concatenated shape after {layer}: {concatenated.shape}")
 
         for layer in self.concat:
             concatenated = layer(concatenated)
 
         if self.config["Use_attention_output"] == 1:
             concatenated = self.SelfAttentionOutput(concatenated.unsqueeze(1)).squeeze(1)
+            logger.debug(f"Concatenated shape after attention output: {concatenated.shape}")
 
         y_hat1 = self.branches[0](concatenated)
         y_hat2 = self.branches[1](concatenated)
@@ -736,8 +748,12 @@ class IM2DeepMulti(L.LightningModule):
         return y_hat1, y_hat2
 
     def training_step(self, batch, batch_idx):
-        atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
 
         y1, y2 = y[:, 0], y[:, 1]
 
@@ -761,8 +777,12 @@ class IM2DeepMulti(L.LightningModule):
         return total_loss
 
     def validation_step(self, batch, batch_idx):
-        atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
 
         y1, y2 = y[:, 0], y[:, 1]
 
@@ -779,8 +799,12 @@ class IM2DeepMulti(L.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx):
-        atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
 
         y1, y2 = y[:, 0], y[:, 1]
 
@@ -798,15 +822,17 @@ class IM2DeepMulti(L.LightningModule):
         return loss
 
     def predict_step(self, batch):
-        atom_comp, diatom_comp, global_feats, one_hot, y = batch
-        y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, mol_desc, y = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
         return torch.hstack([y_hat1, y_hat2])
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
         return optimizer
-
-
 
 
 
