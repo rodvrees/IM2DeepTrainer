@@ -68,5 +68,7 @@ def main(config, *args, **kwargs):
     logger.info("Finished IM2DeepTrainer")
 
 if __name__ == "__main__":
+    import os
+    os.environ['WANDB_MODE']="offline"
     main()
 

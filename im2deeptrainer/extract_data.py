@@ -116,9 +116,10 @@ def _get_matrices(df, split_name, add_X_mol=True):
             df.rename(columns={"CCS": "tr"}, inplace=True)
 
     logger.debug(len(df))
+    logger.debug(df.columns)
 
     # PSM class, used by DeepLC in get_feat_df, cannot handle 2 values for CCS/TR. This is a workaround but should be fixed in the future
-    df['tr_temp'] = df['tr']
+    df['tr_temp'] = df['tr'].copy()
     df['tr'] = 0
 
     feat_df = get_feat_df(df, predict_ccs=True)
@@ -126,8 +127,9 @@ def _get_matrices(df, split_name, add_X_mol=True):
     feat_df["seq"] = df["seq"]
     feat_df["modifications"] = df["modifications"]
     feat_df["tr"] = df['tr_temp'].to_numpy()
+    df['tr'] = df['tr_temp'].copy()
+    del df['tr_temp']
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
-
 
     data = {
         f"X_{split_name}_AtomEnc": X,
@@ -167,9 +169,9 @@ def data_extraction(config):
     ccs_df_train, ccs_df_valid = _train_test_split(ccs_df_train, config["val_split"])
 
     if config["save_dfs"]:
-        ccs_df_train.to_csv(f"{config['output_path']}/train_data.csv", index=False)
-        ccs_df_valid.to_csv(f"{config['output_path']}/valid_data.csv", index=False)
-        ccs_df_test.to_csv(f"{config['output_path']}/test_data.csv", index=False)
+        ccs_df_train.to_pickle(f"{config['output_path']}/train_data.pickle")
+        ccs_df_valid.to_pickle(f"{config['output_path']}/valid_data.pickle")
+        ccs_df_test.to_pickle(f"{config['output_path']}/test_data.pickle")
 
     logger.debug(
         f"Train: {ccs_df_train.shape}, Valid: {ccs_df_valid.shape}, Test: {ccs_df_test.shape}"

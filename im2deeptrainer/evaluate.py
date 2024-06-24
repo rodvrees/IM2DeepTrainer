@@ -107,7 +107,7 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
     except KeyError:
         targets = test_df["tr"].to_numpy()
 
-    if config.get("multi-output", False) == False:
+    if config['model_params'].get("multi-output", False) == False:
 
         test_mae, test_mean_pearson_r, test_mre = _evaluate_predictions(predictions, targets)
 
@@ -128,7 +128,11 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
 
     else:
         predictions = np.sort(predictions, axis=1)
+        logger.debug(targets.shape)
+        targets = targets.reshape(-1, 1)
+        targets = np.array([x[0] for x in targets])
         targets = np.sort(targets, axis=1)
+        logger.debug(targets)
         prediction1 = torch.tensor(predictions[:, 0])
         prediction2 = torch.tensor(predictions[:, 1])
         target1 = torch.tensor(targets[:, 0])
@@ -141,10 +145,10 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
         if config["model_params"]["wandb"]["enabled"]:
             wandb.log(
                 {
-                    "Mean MAE": mean_mae,
-                    "Lowest MAE": lowest_mae,
-                    "Mean Pearson R": mean_pearson_r,
-                    "Mean MRE": mean_mre,
+                    "Test Mean MAE": mean_mae,
+                    "Test Lowest MAE": lowest_mae,
+                    "Test Mean Pearson R": mean_pearson_r,
+                    "Test Mean MRE": mean_mre,
                 }
             )
 

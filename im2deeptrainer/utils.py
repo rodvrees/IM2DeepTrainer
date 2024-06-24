@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from scipy.stats import pearsonr
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,8 @@ BASEMODELCONFIG = {
         "OneHot_MaxPool_kernel_size": 10,
         "LRelu_negative_slope": 0.013545684190756122,
         "LRelu_saturation": 40,
+        "init": "normal",
+        "add_X_mol": False
         }
 
 class FlexibleLossSorted(nn.Module):
@@ -38,21 +41,51 @@ class FlexibleLossSorted(nn.Module):
         predictions, _ = torch.sort(predictions, dim=1)
 
         target1 = targets[:, 0]
+        # print('Target 1:{}'.format(target1[0]))
+        # print('Target 1 type:{}'.format(type(target1)))
+        # print('Target 1 shape:{}'.format(target1.shape))
         target2 = targets[:, 1]
-
+        # print('Target 2:{}'.format(target2[0]))
+        # print('Target 2 type:{}'.format(type(target2)))
+        # print('Target 2 shape:{}'.format(target2.shape))
         prediction1 = predictions[:, 0]
+        prediction1 = prediction1.squeeze()
+        # print('Prediction 1 shape:{}'.format(prediction1.shape))
+        # print('Prediction 1:{}'.format(type(prediction1[0])))
+
+
+
         prediction2 = predictions[:, 1]
 
+        prediction2 = prediction2.squeeze()
+        # print('Prediction 2:{}'.format(type(prediction2[0])))
+        # print('Prediction 2 shape:{}'.format(prediction2.shape))
+
         loss1 = loss_fn(prediction1.float(), target1.float())
+        # print('Loss 1:{}'.format(type(loss1)))
+        # print('Loss 1 shape:{}'.format(loss1.shape))
+
         loss2 = loss_fn(prediction2.float(), target2.float())
+        # print('Loss2:{}'.format(type(loss2)))
+        # print('Loss2 shape:{}'.format(loss2.shape))
 
         target_diff = torch.abs(target1 - target2)
+        # print('Target Diff:{}'.format(target_diff[0]))
+        # print('Target Diff type:{}'.format(type(target_diff[0])))
+        # print('Target Diff shape:{}'.format(target_diff.shape))
         prediction_diff = torch.abs(prediction1 - prediction2)
-
+        # print('Prediction Diff:{}'.format(prediction_diff[0]))
+        # print('Prediction Diff type:{}'.format(type(prediction_diff[0])))
+        # print('Prediction Diff shape:{}'.format(prediction_diff.shape))
         diff_loss = loss_fn(prediction_diff.float(), target_diff.float())
+        # print('Diff loss:{}'.format(diff_loss))
+        # print('Diff loss type:{}'.format(type(diff_loss)))
+        # print('Diff loss shape:{}'.format(diff_loss.shape))
 
         total_loss = (loss1 + loss2) + (self.diversity_weight * diff_loss)
-
+        # print('Total loss:{}'.format(total_loss))
+        # print('Total loss type:{}'.format(type(total_loss)))
+        # print('Total loss shape:{}'.format(total_loss.shape))
         return total_loss
 
 class FlexibleLoss(nn.Module):
@@ -97,8 +130,12 @@ class FlexibleLoss(nn.Module):
 def MeanMAESorted(y1, y2, y_hat1, y_hat2):
     targets = torch.stack([y1, y2], dim=1)
     predictions = torch.stack([y_hat1, y_hat2], dim=1)
+    # predictions is shape [x,2,1] but should be [x,2]
+    predictions = predictions.squeeze()
+
     targets, _ = torch.sort(targets, dim=1)
     predictions, _ = torch.sort(predictions, dim=1)
+
 
     target1 = targets[:, 0]
     target2 = targets[:, 1]
@@ -114,6 +151,7 @@ def MeanMAESorted(y1, y2, y_hat1, y_hat2):
 def LowestMAESorted(y1, y2, y_hat1, y_hat2):
     targets = torch.stack([y1, y2], dim=1)
     predictions = torch.stack([y_hat1, y_hat2], dim=1)
+    predictions = predictions.squeeze()
 
     targets, _ = torch.sort(targets, dim=1)
     predictions, _ = torch.sort(predictions, dim=1)
