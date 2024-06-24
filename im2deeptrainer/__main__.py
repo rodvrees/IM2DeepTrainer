@@ -69,6 +69,6 @@ def main(config, *args, **kwargs):
 
 if __name__ == "__main__":
     import os
-    os.environ['WANDB_MODE']="offline"
+    # os.environ['WANDB_MODE']="offline"
     main()
 

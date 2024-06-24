@@ -921,33 +921,33 @@ class IM2DeepMulti(L.LightningModule):
                 saturation=self.config["LRelu_saturation"],
             )
         )
-        # self.Concat.append(
-        #     DenseActivation(
-        #         self.config["Concat_units"],
-        #         self.config["Concat_units"],
-        #         initializer=initi,
-        #         negative_slope=self.config["LRelu_negative_slope"],
-        #         saturation=self.config["LRelu_saturation"],
-        #     )
-        # )
-        # self.Concat.append(
-        #     DenseActivation(
-        #         self.config["Concat_units"],
-        #         self.config["Concat_units"],
-        #         initializer=initi,
-        #         negative_slope=self.config["LRelu_negative_slope"],
-        #         saturation=self.config["LRelu_saturation"],
-        #     )
-        # )
-        # self.Concat.append(
-        #     DenseActivation(
-        #         self.config["Concat_units"],
-        #         self.config["Concat_units"],
-        #         initializer=initi,
-        #         negative_slope=self.config["LRelu_negative_slope"],
-        #         saturation=self.config["LRelu_saturation"],
-        #     )
-        # )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
+        self.Concat.append(
+            DenseActivation(
+                self.config["Concat_units"],
+                self.config["Concat_units"],
+                initializer=initi,
+                negative_slope=self.config["LRelu_negative_slope"],
+                saturation=self.config["LRelu_saturation"],
+            )
+        )
 
         self.concat_input_size = calculate_concat_shape(self.config)
         self.branches = nn.ModuleList(
@@ -1083,32 +1083,8 @@ class IM2DeepMultiTransfer(L.LightningModule):
         self.l1_alpha = config["L1_alpha"]
 
         # Load the IM2Deep model
-        try:
-            self.backbone = IM2Deep(config, nn.L1Loss())
-        except KeyError: #TODO: This is gonna have to be another error I think
-            self.backbone = IM2Deep(BASEMODELCONFIG, nn.L1Loss())
-
-        try:
-            self.backbone.load_state_dict(torch.load(config["backbone_SD_path"], map_location='cuda:{}'.format(config['device']))['state_dict'])
-            logger.info('Loaded backbone state dict')
-        except KeyError:
-            try:
-                #TODO: fix
-                self.backbone.load_state_dict(
-                    torch.load("/home/robbe/IM2DeepTrainer/im2deeptrainer/BestParams_final_model_state_dict.pth", map_location='cuda:{}'.format(config['device']))
-                )
-            except RuntimeError as e:
-                logger.error(
-                    "State dict incompatible with model. Make sure the model configuration is correct."
-                )
-                logger.error(e)
-                sys.exit(1)
-        except RuntimeError as e:
-            logger.error(
-                "State dict incompatible with model. Make sure the model configuration is correct."
-            )
-            logger.error(e)
-            sys.exit(1)
+        logger.debug('Loading backbone IM2Deep model')
+        self.backbone = IM2Deep.load_from_checkpoint(config["backbone_SD_path"], config=config, criterion=criterion)
 
         self.ConvAtomComp = self.backbone.ConvAtomComp
         self.ConvDiatomComp = self.backbone.ConvDiatomComp
@@ -1133,8 +1109,8 @@ class IM2DeepMultiTransfer(L.LightningModule):
 
         self.branches = nn.ModuleList(
             [
-                Branch(config['Concat_units'], config["BranchSize"], add_layer=config.get("add_branch_layer", 0)),
-                Branch(config['Concat_units'], config["BranchSize"], add_layer=config.get("add_branch_layer", 0)),
+                Branch(config['Concat_units'], config.get("BranchSize", None), add_layer=config.get("add_branch_layer", 0)),
+                Branch(config['Concat_units'], config.get("BranchSize", None), add_layer=config.get("add_branch_layer", 0)),
             ]
         )
 
@@ -1168,13 +1144,13 @@ class IM2DeepMultiTransfer(L.LightningModule):
         if self.config["add_X_mol"]:
             concatenated = torch.cat((concatenated, mol_desc), 1)
 
-        if self.config["Use_attention_concat"] == 1:
+        if self.config.get("Use_attention_concat", 0) == 1:
             concatenated = self.SelfAttentionConcat(concatenated.unsqueeze(1)).squeeze(1)
 
         for layer in self.concat:
             concatenated = layer(concatenated)
 
-        if self.config["Use_attention_output"] == 1:
+        if self.config.get("Use_attention_output", 0) == 1:
             concatenated = self.SelfAttentionOutput(concatenated.unsqueeze(1)).squeeze(1)
 
         y_hat1 = self.branches[0](concatenated)
@@ -1268,225 +1244,3 @@ class IM2DeepMultiTransfer(L.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
         return optimizer
-
-
-
-
-
-
-class IM2DeepLSTM(L.LightningModule):
-    def __init__(self, config, criterion):
-        super(IM2DeepLSTM, self).__init__()
-        self.config = config
-        self.criterion = criterion
-        self.mae = nn.L1Loss()
-
-        initi = self.configure_init()
-
-        self.LSTMAtomComp = nn.LSTM(6, 1024, num_layers=3, batch_first=True, bidirectional=True)
-
-        self.LSTMDiatomComp = nn.LSTM(6, 512, num_layers=3, batch_first=True, bidirectional=True)
-
-        self.Global = nn.ModuleList()
-        self.Global.append(
-            DenseActivation(
-                60,
-                self.config["Global_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-        self.Global.append(
-            DenseActivation(
-                self.config["Global_units"],
-                self.config["Global_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-        self.Global.append(
-            DenseActivation(
-                self.config["Global_units"],
-                self.config["Global_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-
-        self.OneHot = nn.LSTM(20, 80, num_layers=3, batch_first=True, bidirectional=True)
-
-        if config["add_X_mol"]:
-            self.MolDesc = nn.LSTM(13, 256, num_layers=2, batch_first=True, bidirectional=True)
-
-        total_input_size = 1024 * 2 + 512 * 2 + 256 + 80 * 2
-        if config["add_X_mol"]:
-            total_input_size += 256 * 2
-
-        self.total_input_size = total_input_size
-
-        self.Concat = nn.ModuleList()
-        self.Concat.append(
-            DenseActivation(
-                self.total_input_size,
-                self.config["Concat_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-        self.Concat.append(
-            DenseActivation(
-                self.config["Concat_units"],
-                self.config["Concat_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-        self.Concat.append(
-            DenseActivation(
-                self.config["Concat_units"],
-                self.config["Concat_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-        self.Concat.append(
-            DenseActivation(
-                self.config["Concat_units"],
-                self.config["Concat_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-        self.Concat.append(
-            DenseActivation(
-                self.config["Concat_units"],
-                self.config["Concat_units"],
-                initializer=initi,
-                negative_slope=self.config["LRelu_negative_slope"],
-                saturation=self.config["LRelu_saturation"],
-            )
-        )
-
-        self.Concat.append(nn.Linear(self.config["Concat_units"], 1))
-
-    def regularized_loss(self, y_hat, y):
-        standard_loss = self.criterion(y_hat, y)
-        l1_norm = sum(torch.norm(p, 1) for p in self.parameters())
-        return standard_loss + self.config["L1_alpha"] * l1_norm
-
-    def forward(self, atom_comp, diatom_comp, global_feats, one_hot, mol_desc=None):
-        if self.config["add_X_mol"]:
-            mol_desc = mol_desc.permute(0, 2, 1)
-
-        atom_comp, _ = self.LSTMAtomComp(atom_comp)
-        diatom_comp, _ = self.LSTMDiatomComp(diatom_comp)
-
-        for layer in self.Global:
-            global_feats = layer(global_feats)
-
-        one_hot, _ = self.OneHot(one_hot)
-
-        if self.config["add_X_mol"]:
-            mol_desc, _ = self.MolDesc(mol_desc)
-
-        concatenated = torch.cat(
-            (atom_comp[:, -1, :], diatom_comp[:, -1, :], one_hot[:, -1, :], global_feats), 1
-        )
-
-        if self.config["add_X_mol"]:
-            concatenated = torch.cat((concatenated, mol_desc[:, -1, :]), 1)
-
-        for layer in self.Concat:
-            concatenated = layer(concatenated)
-
-        output = concatenated
-        return output
-
-    def training_step(self, batch, batch_idx):
-        if self.config["add_X_mol"]:
-            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
-        else:
-            atom_comp, diatom_comp, global_feats, one_hot, y = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
-
-        loss = self.regularized_loss(y_hat, y)
-
-        self.log("Train loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log(
-            "Train MAE",
-            self.mae(y_hat, y),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        if self.config["add_X_mol"]:
-            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
-        else:
-            atom_comp, diatom_comp, global_feats, one_hot, y = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
-        loss = self.criterion(y_hat, y)
-
-        self.log("Validation loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log(
-            "Validation MAE",
-            self.mae(y_hat, y),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        if self.config["add_X_mol"]:
-            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
-        else:
-            atom_comp, diatom_comp, global_feats, one_hot, y = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
-        loss = self.criterion(y_hat, y)
-
-        self.log("Test loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log(
-            "Test MAE",
-            self.mae(y_hat, y),
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
-        return loss
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=None):
-        if self.config["add_X_mol"]:
-            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
-        else:
-            atom_comp, diatom_comp, global_feats, one_hot, y = batch
-            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
-        return y_hat
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
-        return optimizer
-
-    def configure_init(self):
-        if (not self.config["init"]) or (self.config["init"] == "normal"):
-            return nn.init.normal_
-        if self.config["init"] == "xavier":
-            return nn.init.xavier_normal_
-        if self.config["init"] == "kaiming":
-            return nn.init.kaiming_normal_
