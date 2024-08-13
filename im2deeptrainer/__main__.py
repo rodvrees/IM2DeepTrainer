@@ -29,19 +29,25 @@ def _setup_logging(log_level):
         datefmt="%Y-%m-%d %H:%M:%S",
         level=LOGGING_LEVELS[log_level],
         handlers=[
-            RichHandler(
-                rich_tracebacks=True, console=console, show_level=True, show_path=True
-            )
+            RichHandler(rich_tracebacks=True, console=console, show_level=True, show_path=True)
         ],
     )
+
 
 def _setup_wandb(config):
     wandb_config = config["model_params"]["wandb"]
     if wandb_config["enabled"]:
         import wandb
-        wandb.init(project=wandb_config["project_name"], name=config["model_params"]["model_name"], save_code=False, config=config['model_params'])
+
+        wandb.init(
+            project=wandb_config["project_name"],
+            name=config["model_params"]["model_name"],
+            save_code=False,
+            config=config["model_params"],
+        )
         config = wandb.config
     return config
+
 
 def _parse_config(config_path: Path):
     if Path(config_path).suffix.lower() != ".json":
@@ -63,12 +69,16 @@ def main(config, *args, **kwargs):
     config = _parse_config(config)
     model_config = _setup_wandb(config)
     data, test_df = data_extraction(config)
-    trainer, model, test_loader = train_model(data, model_config, output_path=config["output_path"])
+    trainer, model, test_loader = train_model(
+        data, model_config, output_path=config["output_path"]
+    )
     evaluate_and_plot(trainer, model, test_loader, test_df, config)
+
     logger.info("Finished IM2DeepTrainer")
+
 
 if __name__ == "__main__":
     import os
+
     # os.environ['WANDB_MODE']="offline"
     main()
-

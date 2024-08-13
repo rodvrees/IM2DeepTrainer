@@ -10,9 +10,7 @@ logger = logging.getLogger(__name__)
 random.seed(42)
 
 MOL_FEATS = pd.read_csv(
-    os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "aa_mol_desc_feats.csv"
-    )
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "aa_mol_desc_feats.csv")
 )
 
 
@@ -56,9 +54,8 @@ def _mod_chemical_features(features, mask=None):
 
 
 def _empty_array():
-    return np.zeros(
-        (13, 60), dtype=np.float32
-    )
+    return np.zeros((13, 60), dtype=np.float32)
+
 
 def _string_to_tuple_list(input_string):
     parts = input_string.split("|")
@@ -107,6 +104,7 @@ def _get_mol_matrix(feat_df, features=MOL_FEATS):
         )
     return np.array(mol_feats)
 
+
 def _get_matrices(df, split_name, add_X_mol=True):
     # TODO: memory inneficient, fix
     if "tr" not in df.columns:
@@ -119,16 +117,16 @@ def _get_matrices(df, split_name, add_X_mol=True):
     logger.debug(df.columns)
 
     # PSM class, used by DeepLC in get_feat_df, cannot handle 2 values for CCS/TR. This is a workaround but should be fixed in the future
-    df['tr_temp'] = df['tr'].copy()
-    df['tr'] = 0
+    df["tr_temp"] = df["tr"].copy()
+    df["tr"] = 0
 
     feat_df = get_feat_df(df, predict_ccs=True)
     feat_df["charge"] = df["charge"]
     feat_df["seq"] = df["seq"]
     feat_df["modifications"] = df["modifications"]
-    feat_df["tr"] = df['tr_temp'].to_numpy()
-    df['tr'] = df['tr_temp'].copy()
-    del df['tr_temp']
+    feat_df["tr"] = df["tr_temp"].to_numpy()
+    df["tr"] = df["tr_temp"].copy()
+    del df["tr_temp"]
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
 
     data = {
@@ -161,7 +159,7 @@ def data_extraction(config):
         ccs_df_test = pd.read_csv(config["test_data_path"])
         ccs_df_train = data
     except UnicodeDecodeError:
-        ccs_df_test = pd.read_pickle(config['test_data_path'])
+        ccs_df_test = pd.read_pickle(config["test_data_path"])
         ccs_df_train = data
     except KeyError:
         ccs_df_train, ccs_df_test = _train_test_split(data, config["test_split"])
@@ -169,9 +167,15 @@ def data_extraction(config):
     ccs_df_train, ccs_df_valid = _train_test_split(ccs_df_train, config["val_split"])
 
     if config["save_dfs"]:
-        ccs_df_train.to_pickle(f"{config['output_path']}/train_data.pickle")
-        ccs_df_valid.to_pickle(f"{config['output_path']}/valid_data.pickle")
-        ccs_df_test.to_pickle(f"{config['output_path']}/test_data.pickle")
+        ccs_df_train.to_pickle(
+            f"{config['output_path']}/train_data_{config['model_params']['model_name']}.pickle"
+        )
+        ccs_df_valid.to_pickle(
+            f"{config['output_path']}/valid_data_{config['model_params']['model_name']}.pickle"
+        )
+        ccs_df_test.to_pickle(
+            f"{config['output_path']}/test_data_{config['model_params']['model_name']}.pickle"
+        )
 
     logger.debug(
         f"Train: {ccs_df_train.shape}, Valid: {ccs_df_valid.shape}, Test: {ccs_df_test.shape}"

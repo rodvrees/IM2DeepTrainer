@@ -107,7 +107,7 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
     except KeyError:
         targets = test_df["tr"].to_numpy()
 
-    if config['model_params'].get("multi-output", False) == False:
+    if config["model_params"].get("multi-output", False) == False:
 
         test_mae, test_mean_pearson_r, test_mre = _evaluate_predictions(predictions, targets)
 
@@ -126,6 +126,13 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
             config["model_params"]["model_name"],
         )
 
+        if config.get("output_predictions", False):
+            test_df["predicted_CCS"] = predictions
+            test_df.to_csv(
+                config["output_path"]
+                + "{}_predictions.csv".format(config["model_params"]["model_name"]),
+                index=False,
+            )
     else:
         predictions = np.sort(predictions, axis=1)
         logger.debug(targets.shape)
@@ -165,3 +172,14 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
             config["output_path"],
             config["model_params"]["model_name"],
         )
+
+        if config.get("output_predictions", False):
+            test_df["observed_CCS_1"] = target1
+            test_df["observed_CCS_2"] = target2
+            test_df["predicted_CCS_1"] = prediction1
+            test_df["predicted_CCS_2"] = prediction2
+            test_df.to_csv(
+                config["output_path"]
+                + "{}_predictions.csv".format(config["model_params"]["model_name"]),
+                index=False,
+            )

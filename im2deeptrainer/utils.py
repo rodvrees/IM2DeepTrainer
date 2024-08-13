@@ -9,22 +9,23 @@ logger = logging.getLogger(__name__)
 MAE = nn.L1Loss()
 
 BASEMODELCONFIG = {
-        "AtomComp_kernel_size": 4,
-        "DiatomComp_kernel_size": 4,
-        "One_hot_kernel_size": 4,
-        "AtomComp_out_channels_start": 356,
-        "DiatomComp_out_channels_start": 65,
-        "Global_units": 20,
-        "OneHot_out_channels": 1,
-        "Concat_units": 94,
-        "AtomComp_MaxPool_kernel_size": 2,
-        "DiatomComp_MaxPool_kernel_size": 2,
-        "OneHot_MaxPool_kernel_size": 10,
-        "LRelu_negative_slope": 0.013545684190756122,
-        "LRelu_saturation": 40,
-        "init": "normal",
-        "add_X_mol": False
-        }
+    "AtomComp_kernel_size": 4,
+    "DiatomComp_kernel_size": 4,
+    "One_hot_kernel_size": 4,
+    "AtomComp_out_channels_start": 356,
+    "DiatomComp_out_channels_start": 65,
+    "Global_units": 20,
+    "OneHot_out_channels": 1,
+    "Concat_units": 94,
+    "AtomComp_MaxPool_kernel_size": 2,
+    "DiatomComp_MaxPool_kernel_size": 2,
+    "OneHot_MaxPool_kernel_size": 10,
+    "LRelu_negative_slope": 0.013545684190756122,
+    "LRelu_saturation": 40,
+    "init": "normal",
+    "add_X_mol": False,
+}
+
 
 class FlexibleLossSorted(nn.Module):
     def __init__(self, diversity_weight=0.1):
@@ -41,52 +42,30 @@ class FlexibleLossSorted(nn.Module):
         predictions, _ = torch.sort(predictions, dim=1)
 
         target1 = targets[:, 0]
-        # print('Target 1:{}'.format(target1[0]))
-        # print('Target 1 type:{}'.format(type(target1)))
-        # print('Target 1 shape:{}'.format(target1.shape))
+
         target2 = targets[:, 1]
-        # print('Target 2:{}'.format(target2[0]))
-        # print('Target 2 type:{}'.format(type(target2)))
-        # print('Target 2 shape:{}'.format(target2.shape))
+
         prediction1 = predictions[:, 0]
         prediction1 = prediction1.squeeze()
-        # print('Prediction 1 shape:{}'.format(prediction1.shape))
-        # print('Prediction 1:{}'.format(type(prediction1[0])))
-
-
 
         prediction2 = predictions[:, 1]
 
         prediction2 = prediction2.squeeze()
-        # print('Prediction 2:{}'.format(type(prediction2[0])))
-        # print('Prediction 2 shape:{}'.format(prediction2.shape))
 
         loss1 = loss_fn(prediction1.float(), target1.float())
-        # print('Loss 1:{}'.format(type(loss1)))
-        # print('Loss 1 shape:{}'.format(loss1.shape))
 
         loss2 = loss_fn(prediction2.float(), target2.float())
-        # print('Loss2:{}'.format(type(loss2)))
-        # print('Loss2 shape:{}'.format(loss2.shape))
 
         target_diff = torch.abs(target1 - target2)
-        # print('Target Diff:{}'.format(target_diff[0]))
-        # print('Target Diff type:{}'.format(type(target_diff[0])))
-        # print('Target Diff shape:{}'.format(target_diff.shape))
+
         prediction_diff = torch.abs(prediction1 - prediction2)
-        # print('Prediction Diff:{}'.format(prediction_diff[0]))
-        # print('Prediction Diff type:{}'.format(type(prediction_diff[0])))
-        # print('Prediction Diff shape:{}'.format(prediction_diff.shape))
+
         diff_loss = loss_fn(prediction_diff.float(), target_diff.float())
-        # print('Diff loss:{}'.format(diff_loss))
-        # print('Diff loss type:{}'.format(type(diff_loss)))
-        # print('Diff loss shape:{}'.format(diff_loss.shape))
 
         total_loss = (loss1 + loss2) + (self.diversity_weight * diff_loss)
-        # print('Total loss:{}'.format(total_loss))
-        # print('Total loss type:{}'.format(type(total_loss)))
-        # print('Total loss shape:{}'.format(total_loss.shape))
+
         return total_loss
+
 
 class FlexibleLoss(nn.Module):
     def __init__(self, diversity_weight=0.1):
@@ -101,7 +80,12 @@ class FlexibleLoss(nn.Module):
         loss1_to_2 = loss_fn(y_hat1, y2)
         loss2_to_1 = loss_fn(y_hat2, y1)
 
-        loss_dict = {"1_to_1": loss1_to_1, "2_to_2": loss2_to_2, "1_to_2": loss1_to_2, "2_to_1": loss2_to_1}
+        loss_dict = {
+            "1_to_1": loss1_to_1,
+            "2_to_2": loss2_to_2,
+            "1_to_2": loss1_to_2,
+            "2_to_1": loss2_to_1,
+        }
         min_loss_key = min(loss_dict, key=loss_dict.get)
         if "1_to" in min_loss_key:
             if "to_1" in min_loss_key:
@@ -127,6 +111,7 @@ class FlexibleLoss(nn.Module):
 
         return total_loss
 
+
 def MeanMAESorted(y1, y2, y_hat1, y_hat2):
     targets = torch.stack([y1, y2], dim=1)
     predictions = torch.stack([y_hat1, y_hat2], dim=1)
@@ -135,7 +120,6 @@ def MeanMAESorted(y1, y2, y_hat1, y_hat2):
 
     targets, _ = torch.sort(targets, dim=1)
     predictions, _ = torch.sort(predictions, dim=1)
-
 
     target1 = targets[:, 0]
     target2 = targets[:, 1]
@@ -147,6 +131,7 @@ def MeanMAESorted(y1, y2, y_hat1, y_hat2):
     mae2 = MAE(prediction2, target2)
 
     return (mae1 + mae2) / 2
+
 
 def LowestMAESorted(y1, y2, y_hat1, y_hat2):
     targets = torch.stack([y1, y2], dim=1)
@@ -167,6 +152,7 @@ def LowestMAESorted(y1, y2, y_hat1, y_hat2):
 
     return min(mae1, mae2)
 
+
 def MeanPearsonRSorted(y1, y2, y_hat1, y_hat2):
     targets = torch.stack([y1, y2], dim=1)
     predictions = torch.stack([y_hat1, y_hat2], dim=1)
@@ -185,28 +171,45 @@ def MeanPearsonRSorted(y1, y2, y_hat1, y_hat2):
 
     return (r1 + r2) / 2
 
+
 def MeanMRE(y1, y2, y_hat1, y_hat2):
-    mre1 = torch.mean(torch.abs((y_hat1 - y1) / y1))
-    mre2 = torch.mean(torch.abs((y_hat2 - y2) / y2))
+    mre1 = torch.median(torch.abs((y_hat1 - y1) / y1))
+    mre2 = torch.median(torch.abs((y_hat2 - y2) / y2))
     return (mre1 + mre2) / 2
 
+
 def calculate_concat_shape(config):
-    atom_comp_out_shape = (60 // (2 * config["AtomComp_MaxPool_kernel_size"])) * (config["AtomComp_out_channels_start"] // 4)
+    atom_comp_out_shape = (60 // (2 * config["AtomComp_MaxPool_kernel_size"])) * (
+        config["AtomComp_out_channels_start"] // 4
+    )
     logger.debug(f"AtomComp out shape: {atom_comp_out_shape}")
-    diatom_comp_out_shape = (30 // (config["DiatomComp_MaxPool_kernel_size"])) * (config["DiatomComp_out_channels_start"] // 2)
+    diatom_comp_out_shape = (30 // (config["DiatomComp_MaxPool_kernel_size"])) * (
+        config["DiatomComp_out_channels_start"] // 2
+    )
     logger.debug(f"DiatomComp out shape: {diatom_comp_out_shape}")
     globals_out_shape = config["Global_units"]
     logger.debug(f"Globals out shape: {globals_out_shape}")
-    onehot_comp_out_shape = (60 // (config["OneHot_MaxPool_kernel_size"])) * config["OneHot_out_channels"]
+    onehot_comp_out_shape = (60 // (config["OneHot_MaxPool_kernel_size"])) * config[
+        "OneHot_out_channels"
+    ]
     logger.debug(f"OneHot out shape: {onehot_comp_out_shape}")
 
-    if config['add_X_mol']:
-        mol_desc_comp_out_shape = (60 // (2 * config["Mol_MaxPool_kernel_size"])) * (config["Mol_out_channels_start"] // 4)
+    if config["add_X_mol"]:
+        mol_desc_comp_out_shape = (60 // (2 * config["Mol_MaxPool_kernel_size"])) * (
+            config["Mol_out_channels_start"] // 4
+        )
         logger.debug(f"MolDesc out shape: {mol_desc_comp_out_shape}")
-        total_input_size = atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape + mol_desc_comp_out_shape
+        total_input_size = (
+            atom_comp_out_shape
+            + diatom_comp_out_shape
+            + globals_out_shape
+            + onehot_comp_out_shape
+            + mol_desc_comp_out_shape
+        )
 
     else:
-        total_input_size = atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape
+        total_input_size = (
+            atom_comp_out_shape + diatom_comp_out_shape + globals_out_shape + onehot_comp_out_shape
+        )
 
     return total_input_size
-

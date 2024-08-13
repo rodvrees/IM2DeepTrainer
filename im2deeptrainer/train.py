@@ -4,30 +4,32 @@ import logging
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
 from lightning.pytorch.loggers import WandbLogger
+
 # from pytorchsummary import summary
 
 from im2deeptrainer.model import IM2Deep, IM2DeepMulti, LogLowestMAE, IM2DeepMultiTransfer
 from im2deeptrainer.utils import FlexibleLossSorted
 
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision("high")
 logger = logging.getLogger(__name__)
+
 
 def _data_to_dataloaders(data, batch_size, shuffle=True):
     tensors = {}
     for key in data.keys():
-        tensors[key] = torch.tensor(
-            data[key], dtype=torch.float32
-        )
+        tensors[key] = torch.tensor(data[key], dtype=torch.float32)
 
     dataset = torch.utils.data.TensorDataset(*[tensors[key] for key in data.keys()])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     return dataloader
+
 
 def _get_dataloaders(data, batch_size):
     train_dataloader = _data_to_dataloaders(data["train"], batch_size, shuffle=True)
     valid_dataloader = _data_to_dataloaders(data["valid"], batch_size, shuffle=False)
     test_dataloader = _data_to_dataloaders(data["test"], batch_size, shuffle=False)
     return train_dataloader, valid_dataloader, test_dataloader
+
 
 def _setup_callbacks(model_config, output_path):
     callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE()]
@@ -43,20 +45,28 @@ def _setup_callbacks(model_config, output_path):
 
     return callbacks
 
+
 def _setup_wandb_logger(wandb_config, model):
     wandb_logger = WandbLogger(project=wandb_config["project_name"])
     wandb_logger.watch(model)
     return wandb_logger
 
+
 def train_model(data, model_config, output_path):
     wandb_config = model_config["wandb"]
     train_data, valid_data, test_data = _get_dataloaders(data, model_config["batch_size"])
-    if (model_config.get("multi-output", False) == False):
+    if model_config.get("multi-output", False) == False:
         model = IM2Deep(model_config, criterion=nn.L1Loss())
-    elif (model_config.get("multi-output", False) == True) and (model_config.get('transfer', False) == False):
-        model = IM2DeepMulti(model_config, criterion=FlexibleLossSorted(model_config['diversity_weight']))
+    elif (model_config.get("multi-output", False) == True) and (
+        model_config.get("transfer", False) == False
+    ):
+        model = IM2DeepMulti(
+            model_config, criterion=FlexibleLossSorted(model_config["diversity_weight"])
+        )
     else:
-        model = IM2DeepMultiTransfer(model_config, criterion=FlexibleLossSorted(model_config['diversity_weight']))
+        model = IM2DeepMultiTransfer(
+            model_config, criterion=FlexibleLossSorted(model_config["diversity_weight"])
+        )
 
     logger.info(model)
 
@@ -66,24 +76,37 @@ def train_model(data, model_config, output_path):
 
     trainer = L.Trainer(
         accelerator="gpu",
-       # devices=[model_config["device"]],
+        devices=[model_config["device"]],
         max_epochs=model_config["epochs"],
         enable_progress_bar=True,
         callbacks=callbacks,
         logger=wandb_logger if wandb_config["enabled"] else None,
+        default_root_dir=output_path,
     )
 
     trainer.fit(model, train_data, valid_data)
 
     # Load best model
     if model_config.get("multi-output", False) == False and model_config["use_best_model"]:
-        model = IM2Deep.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss())
-    elif model_config.get("multi-output", False) and model_config["use_best_model"] and model_config.get('transfer', False) == False:
-        model = IM2DeepMulti.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=FlexibleLossSorted(model_config['diversity_weight']))
+        model = IM2Deep.load_from_checkpoint(
+            callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss()
+        )
+    elif (
+        model_config.get("multi-output", False)
+        and model_config["use_best_model"]
+        and model_config.get("transfer", False) == False
+    ):
+        model = IM2DeepMulti.load_from_checkpoint(
+            callbacks[-1].best_model_path,
+            config=model_config,
+            criterion=FlexibleLossSorted(model_config["diversity_weight"]),
+        )
     elif model_config["use_best_model"] and model_config["multi-output"]:
-        model = IM2DeepMultiTransfer.load_from_checkpoint(callbacks[-1].best_model_path, config=model_config, criterion=FlexibleLossSorted(model_config['diversity_weight']))
+        model = IM2DeepMultiTransfer.load_from_checkpoint(
+            callbacks[-1].best_model_path,
+            config=model_config,
+            criterion=FlexibleLossSorted(model_config["diversity_weight"]),
+        )
 
     return trainer, model, test_data
-    #TODO: save full model?
-
-
+    # TODO: save full model?

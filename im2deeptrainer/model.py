@@ -1102,9 +1102,9 @@ class IM2DeepMultiTransfer(L.LightningModule):
         except KeyError:
             self.output_size = BASEMODELCONFIG["Concat_units"]
 
-        if self.config.get("Use_attention_concat", 0) == 1:
+        if self.config.get("Use_attention_concat", False):
             self.SelfAttentionConcat = SelfAttention(self.concat_input_size, config.get("Concatheads", 1))
-        if self.config.get("Use_attention_output", 0) == 1:
+        if self.config.get("Use_attention_output", False):
             self.SelfAttentionOutput = SelfAttention(config['Concat_units'], config.get("Outputheads", 1))
 
         self.branches = nn.ModuleList(

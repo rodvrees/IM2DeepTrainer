@@ -20,10 +20,12 @@ dynamic = ["version"]
 requires-python = ">=3.8"
 dependencies = [
     "click",
-    "deeplc",
-    "deeplcretrainer",
-    "psm_utils",
-    "tensorflow>=2.2,<2.13.0",
+    "scipy",
+    "wandb",
+    "matplotlib",
+    "torch==2.3.0",
+    "deeplcretrainer==0.2.12",
+    "lightning==2.2.4",
     "pandas",
     "numpy",
     "rich"
