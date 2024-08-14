@@ -23,7 +23,7 @@ dependencies = [
     "scipy",
     "wandb",
     "matplotlib",
-    "torch==2.3.0",
+    "torch",
     "deeplcretrainer==0.2.12",
     "lightning==2.2.4",
     "pandas",

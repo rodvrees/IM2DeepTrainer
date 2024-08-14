@@ -105,7 +105,7 @@ def _get_mol_matrix(feat_df, features=MOL_FEATS):
     return np.array(mol_feats)
 
 
-def _get_matrices(df, split_name, add_X_mol=True):
+def _get_matrices(df, split_name="test", add_X_mol=False):
     # TODO: memory inneficient, fix
     if "tr" not in df.columns:
         if "CCS" not in df.columns:
