@@ -5,6 +5,8 @@ import pandas as pd
 import pickle
 import logging
 import numpy as np
+from psm_utils.io.peptide_record import peprec_to_proforma
+from psm_utils import PSM, PSMList
 
 logger = logging.getLogger(__name__)
 random.seed(42)
@@ -105,36 +107,38 @@ def _get_mol_matrix(feat_df, features=MOL_FEATS):
     return np.array(mol_feats)
 
 
-def _get_matrices(df, split_name="test", add_X_mol=False):
-    # TODO: memory inneficient, fix
-    if "tr" not in df.columns:
-        if "CCS" not in df.columns:
-            raise ValueError("CCS column not found in dataframe")
-        else:
-            df.rename(columns={"CCS": "tr"}, inplace=True)
+def _get_matrices(psm_list, split_name="test", add_X_mol=False):
 
-    logger.debug(len(df))
-    logger.debug(df.columns)
+    # # PSM class, used by DeepLC in get_feat_df, cannot handle 2 values for CCS/TR. This is a workaround but should be fixed in the future
+    # df["tr_temp"] = df["tr"].copy()
+    # df["tr"] = 0
 
-    # PSM class, used by DeepLC in get_feat_df, cannot handle 2 values for CCS/TR. This is a workaround but should be fixed in the future
-    df["tr_temp"] = df["tr"].copy()
-    df["tr"] = 0
+    feat_df = get_feat_df(psm_list=psm_list, predict_ccs=True)
+    y1 = []
+    y2 = []
+    for psm in psm_list:
+        y1.append(float(psm.metadata["CCS1"]))
+        y2.append(float(psm.metadata["CCS2"]))
 
-    feat_df = get_feat_df(df, predict_ccs=True)
-    feat_df["charge"] = df["charge"]
-    feat_df["seq"] = df["seq"]
-    feat_df["modifications"] = df["modifications"]
-    feat_df["tr"] = df["tr_temp"].to_numpy()
-    df["tr"] = df["tr_temp"].copy()
-    del df["tr_temp"]
+    feat_df["tr"] = 0
+
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
+
+    y = np.array(list(zip(y1, y2)))
+    # feat_df["charge"] = df["charge"]
+    # feat_df["seq"] = df["seq"]
+    # feat_df["modifications"] = df["modifications"]
+    # feat_df["tr"] = df["tr_temp"].to_numpy()
+    # df["tr"] = df["tr_temp"].copy()
+    # del df["tr_temp"]
+    # X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
 
     data = {
         f"X_{split_name}_AtomEnc": X,
         f"X_{split_name}_DiAminoAtomEnc": X_sum,
         f"X_{split_name}_GlobalFeatures": X_global,
         f"X_{split_name}_OneHot": X_hc,
-        f"y_{split_name}": np.array([np.array(y_i) for y_i in y]),
+        f"y_{split_name}": y,
     }
 
     if add_X_mol:
@@ -180,18 +184,70 @@ def data_extraction(config):
     logger.debug(
         f"Train: {ccs_df_train.shape}, Valid: {ccs_df_valid.shape}, Test: {ccs_df_test.shape}"
     )
+
+    train_psm = []
+    for seq, mod, charge, ccs, ident in zip(
+        ccs_df_test["seq"],
+        ccs_df_test["modifications"],
+        ccs_df_test["charge"],
+        ccs_df_test["CCS"],
+        ccs_df_test.index,
+    ):
+        train_psm.append(
+            PSM(
+                peptidoform=peprec_to_proforma(seq, mod, charge),
+                spectrum_id=ident,
+                metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+            )
+        )
+    train_psmlist = PSMList(psm_list=train_psm)
+
+    valid_psm = []
+    for seq, mod, charge, ccs, ident in zip(
+        ccs_df_valid["seq"],
+        ccs_df_valid["modifications"],
+        ccs_df_valid["charge"],
+        ccs_df_valid["CCS"],
+        ccs_df_valid.index,
+    ):
+        valid_psm.append(
+            PSM(
+                peptidoform=peprec_to_proforma(seq, mod, charge),
+                spectrum_id=ident,
+                metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+            )
+        )
+    valid_psmlist = PSMList(psm_list=valid_psm)
+
+    test_psm = []
+    for seq, mod, charge, ccs, ident in zip(
+        ccs_df_test["seq"],
+        ccs_df_test["modifications"],
+        ccs_df_test["charge"],
+        ccs_df_test["CCS"],
+        ccs_df_test.index,
+    ):
+        test_psm.append(
+            PSM(
+                peptidoform=peprec_to_proforma(seq, mod, charge),
+                spectrum_id=ident,
+                metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+            )
+        )
+    test_psmlist = PSMList(psm_list=test_psm)
+
     train_data = _get_matrices(
-        ccs_df_train,
+        train_psmlist,
         "train",
         add_X_mol=config["model_params"]["add_X_mol"],
     )
     valid_data = _get_matrices(
-        ccs_df_valid,
+        valid_psmlist,
         "valid",
         add_X_mol=config["model_params"]["add_X_mol"],
     )
     test_data = _get_matrices(
-        ccs_df_test,
+        test_psmlist,
         "test",
         add_X_mol=config["model_params"]["add_X_mol"],
     )

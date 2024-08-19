@@ -32,7 +32,7 @@ def _get_dataloaders(data, batch_size):
 
 
 def _setup_callbacks(model_config, output_path):
-    callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE()]
+    callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE(model_config)]
     if model_config["use_best_model"]:
         mcp = ModelCheckpoint(
             output_path + "/checkpoint",

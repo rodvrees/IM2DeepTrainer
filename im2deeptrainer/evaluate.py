@@ -135,11 +135,9 @@ def evaluate_and_plot(trainer, model, test_data, test_df, config):
             )
     else:
         predictions = np.sort(predictions, axis=1)
-        logger.debug(targets.shape)
         targets = targets.reshape(-1, 1)
         targets = np.array([x[0] for x in targets])
         targets = np.sort(targets, axis=1)
-        logger.debug(targets)
         prediction1 = torch.tensor(predictions[:, 0])
         prediction2 = torch.tensor(predictions[:, 1])
         target1 = torch.tensor(targets[:, 0])

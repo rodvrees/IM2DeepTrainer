@@ -46,6 +46,8 @@ def _setup_wandb(config):
             config=config["model_params"],
         )
         config = wandb.config
+    else:
+        config = config["model_params"]
     return config
 
 
