@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,9 +7,14 @@ import lightning as L
 import logging
 import wandb
 
-from im2deeptrainer.utils import BASEMODELCONFIG, MeanMAESorted, LowestMAESorted, calculate_concat_shape
+from im2deeptrainer.utils import (
+    BASEMODELCONFIG,
+    MeanMAESorted,
+    LowestMAESorted,
+    calculate_concat_shape,
+)
 
-# from pytorchsummary import summary
+PACKAGE_DATA_PATH = Path(__file__).parent / "package_data"
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +27,7 @@ class LogLowestMAE(L.Callback):
     def on_validation_end(self, trainer, pl_module):
         try:
             currentMAE = trainer.callback_metrics["Validation MAE"]
-        except KeyError: #Multi
+        except KeyError:  # Multi
             currentMAE = trainer.callback_metrics["Val Mean MAE"]
         if currentMAE < self.bestMAE:
             self.bestMAE = currentMAE
@@ -615,6 +621,7 @@ class IM2Deep(L.LightningModule):
         if self.config["init"] == "kaiming":
             return nn.init.kaiming_normal_
 
+
 class IM2DeepMulti(L.LightningModule):
     def __init__(self, config, criterion):
         super(IM2DeepMulti, self).__init__()
@@ -952,8 +959,16 @@ class IM2DeepMulti(L.LightningModule):
         self.concat_input_size = calculate_concat_shape(self.config)
         self.branches = nn.ModuleList(
             [
-                Branch(self.config["Concat_units"], config.get('BranchSize', 0), add_layer=config.get("add_branch_layer", 0)),
-                Branch(self.config["Concat_units"], config.get('BranchSize', 0), add_layer=config.get("add_branch_layer", 0)),
+                Branch(
+                    self.config["Concat_units"],
+                    config.get("BranchSize", 0),
+                    add_layer=config.get("add_branch_layer", 0),
+                ),
+                Branch(
+                    self.config["Concat_units"],
+                    config.get("BranchSize", 0),
+                    add_layer=config.get("add_branch_layer", 0),
+                ),
             ]
         )
 
@@ -992,7 +1007,7 @@ class IM2DeepMulti(L.LightningModule):
         return y_hat1, y_hat2
 
     def training_step(self, batch, batch_idx):
-        if self.config['add_X_mol']:
+        if self.config["add_X_mol"]:
             atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
         else:
@@ -1004,18 +1019,22 @@ class IM2DeepMulti(L.LightningModule):
         loss = self.criterion(y1, y2, y_hat1, y_hat2)
 
         l1_norm = sum(p.abs().sum() for p in self.parameters())
-        total_loss = loss + self.config['L1_alpha'] * l1_norm
+        total_loss = loss + self.config["L1_alpha"] * l1_norm
 
         meanmae = MeanMAESorted(y1, y2, y_hat1, y_hat2)
         lowestmae = LowestMAESorted(y1, y2, y_hat1, y_hat2)
 
-        self.log('Train Loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Train Mean MAE', meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Train Lowest MAE', lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Train Loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Train Mean MAE", meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
+        self.log(
+            "Train Lowest MAE", lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
         return total_loss
 
     def validation_step(self, batch, batch_idx):
-        if self.config['add_X_mol']:
+        if self.config["add_X_mol"]:
             atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
         else:
@@ -1028,13 +1047,15 @@ class IM2DeepMulti(L.LightningModule):
         meanmae = MeanMAESorted(y1, y2, y_hat1, y_hat2)
         lowestmae = LowestMAESorted(y1, y2, y_hat1, y_hat2)
 
-        self.log('Val Loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Val Mean MAE', meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Val Lowest MAE', lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Val Loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Val Mean MAE", meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Val Lowest MAE", lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
         return loss
 
     def test_step(self, batch, batch_idx):
-        if self.config['add_X_mol']:
+        if self.config["add_X_mol"]:
             atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
         else:
@@ -1047,13 +1068,17 @@ class IM2DeepMulti(L.LightningModule):
         meanmae = MeanMAESorted(y1, y2, y_hat1, y_hat2)
         lowestmae = LowestMAESorted(y1, y2, y_hat1, y_hat2)
 
-        self.log('Test Loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Test Mean MAE', meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('Test Lowest MAE', lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("Test Loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Test Mean MAE", meanmae, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
+        self.log(
+            "Test Lowest MAE", lowestmae, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
         return loss
 
     def predict_step(self, batch):
-        if self.config['add_X_mol']:
+        if self.config["add_X_mol"]:
             atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
         else:
@@ -1063,8 +1088,8 @@ class IM2DeepMulti(L.LightningModule):
         return torch.hstack([y_hat1, y_hat2])
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.config['learning_rate'])
-        return optimizer\
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
+        return optimizer
 
     def configure_init(self):
         if (not self.config["init"]) or (self.config["init"] == "normal"):
@@ -1073,6 +1098,7 @@ class IM2DeepMulti(L.LightningModule):
             return nn.init.xavier_normal_
         if self.config["init"] == "kaiming":
             return nn.init.kaiming_normal_
+
 
 class IM2DeepMultiTransfer(L.LightningModule):
     def __init__(self, config, criterion):
@@ -1083,8 +1109,10 @@ class IM2DeepMultiTransfer(L.LightningModule):
         self.l1_alpha = config["L1_alpha"]
 
         # Load the IM2Deep model
-        logger.debug('Loading backbone IM2Deep model')
-        self.backbone = IM2Deep.load_from_checkpoint(config["backbone_SD_path"], config=config, criterion=criterion)
+        logger.debug("Loading backbone IM2Deep model")
+        self.backbone = IM2Deep.load_from_checkpoint(
+            config["backbone_SD_path"], config=config, criterion=criterion
+        )
 
         self.ConvAtomComp = self.backbone.ConvAtomComp
         self.ConvDiatomComp = self.backbone.ConvDiatomComp
@@ -1103,14 +1131,26 @@ class IM2DeepMultiTransfer(L.LightningModule):
             self.output_size = BASEMODELCONFIG["Concat_units"]
 
         if self.config.get("Use_attention_concat", False):
-            self.SelfAttentionConcat = SelfAttention(self.concat_input_size, config.get("Concatheads", 1))
+            self.SelfAttentionConcat = SelfAttention(
+                self.concat_input_size, config.get("Concatheads", 1)
+            )
         if self.config.get("Use_attention_output", False):
-            self.SelfAttentionOutput = SelfAttention(config['Concat_units'], config.get("Outputheads", 1))
+            self.SelfAttentionOutput = SelfAttention(
+                config["Concat_units"], config.get("Outputheads", 1)
+            )
 
         self.branches = nn.ModuleList(
             [
-                Branch(config['Concat_units'], config.get("BranchSize", None), add_layer=config.get("add_branch_layer", 0)),
-                Branch(config['Concat_units'], config.get("BranchSize", None), add_layer=config.get("add_branch_layer", 0)),
+                Branch(
+                    config["Concat_units"],
+                    config.get("BranchSize", None),
+                    add_layer=config.get("add_branch_layer", 0),
+                ),
+                Branch(
+                    config["Concat_units"],
+                    config.get("BranchSize", None),
+                    add_layer=config.get("add_branch_layer", 0),
+                ),
             ]
         )
 
@@ -1125,19 +1165,15 @@ class IM2DeepMultiTransfer(L.LightningModule):
         for layer in self.ConvDiatomComp:
             diatom_comp = layer(diatom_comp)
 
-
         for layer in self.ConvGlobal:
             global_feats = layer(global_feats)
-
 
         for layer in self.OneHot:
             one_hot = layer(one_hot)
 
-
         if self.config["add_X_mol"]:
             for layer in self.MolDesc:
                 mol_desc = layer(mol_desc)
-
 
         concatenated = torch.cat((atom_comp, diatom_comp, one_hot, global_feats), 1)
 

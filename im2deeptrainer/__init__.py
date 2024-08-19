@@ -1,3 +1,3 @@
-'''IM2DeepTrainer package'''
+"""IM2DeepTrainer package"""
 
-__version__ = '0.1.0'
+__version__ = "0.0.2"
