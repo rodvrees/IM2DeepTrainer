@@ -21,6 +21,11 @@ def _data_to_dataloaders(data, batch_size, shuffle=True):
 
     dataset = torch.utils.data.TensorDataset(*[tensors[key] for key in data.keys()])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    for batch_data in dataloader:
+        logger.debug(len(batch_data))
+        logger.debug(batch_data[0])
+        logger.debug(len(batch_data[0]))
+        break
     return dataloader
 
 
@@ -32,7 +37,7 @@ def _get_dataloaders(data, batch_size):
 
 
 def _setup_callbacks(model_config, output_path):
-    callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE()]
+    callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE(model_config)]
     if model_config["use_best_model"]:
         mcp = ModelCheckpoint(
             output_path + "/checkpoint",

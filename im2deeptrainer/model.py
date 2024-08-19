@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 class LogLowestMAE(L.Callback):
-    def __init__(self):
+    def __init__(self, config):
         super(LogLowestMAE, self).__init__()
         self.bestMAE = float("inf")
+        self.config = config
 
     def on_validation_end(self, trainer, pl_module):
         try:
@@ -31,7 +32,9 @@ class LogLowestMAE(L.Callback):
             currentMAE = trainer.callback_metrics["Val Mean MAE"]
         if currentMAE < self.bestMAE:
             self.bestMAE = currentMAE
-        wandb.log({"Best Val MAE": self.bestMAE})
+
+        if self.config["wandb"]["enabled"]:
+            wandb.log({"Best Val MAE": self.bestMAE})
 
 
 class LRelu_with_saturation(nn.Module):
