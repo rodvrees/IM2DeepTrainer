@@ -187,11 +187,11 @@ def data_extraction(config):
 
     train_psm = []
     for seq, mod, charge, ccs, ident in zip(
-        ccs_df_test["seq"],
-        ccs_df_test["modifications"],
-        ccs_df_test["charge"],
-        ccs_df_test["CCS"],
-        ccs_df_test.index,
+        ccs_df_train["seq"],
+        ccs_df_train["modifications"],
+        ccs_df_train["charge"],
+        ccs_df_train["CCS"],
+        ccs_df_train.index,
     ):
         train_psm.append(
             PSM(
@@ -241,11 +241,13 @@ def data_extraction(config):
         "train",
         add_X_mol=config["model_params"]["add_X_mol"],
     )
+
     valid_data = _get_matrices(
         valid_psmlist,
         "valid",
         add_X_mol=config["model_params"]["add_X_mol"],
     )
+
     test_data = _get_matrices(
         test_psmlist,
         "test",
