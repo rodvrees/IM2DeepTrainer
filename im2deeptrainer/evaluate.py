@@ -1,30 +1,35 @@
 import numpy as np
 import wandb
 import matplotlib.pyplot as plt
+from typing import Tuple, Dict
 import logging
 import torch
 from scipy import stats
 from im2deeptrainer.utils import MeanMAESorted, LowestMAESorted, MeanPearsonRSorted, MeanMRE
+import pandas as pd
+import lightning as L
 
 logger = logging.getLogger(__name__)
 
 
-def _mean_absolute_error(targets, predictions):
+def _mean_absolute_error(targets: np.ndarray, predictions: np.ndarray) -> float:
     differences = np.abs(predictions - targets)
     mae = np.mean(differences)
     del differences
     return mae
 
 
-def _pearsonr(targets, predictions):
+def _pearsonr(targets: np.ndarray, predictions: np.ndarray) -> float:
     return stats.pearsonr(targets, predictions).statistic
 
 
-def _median_relative_error(targets, predictions):
+def _median_relative_error(targets: np.ndarray, predictions: np.ndarray) -> float:
     return np.median(np.abs(predictions - targets) / targets)
 
 
-def _evaluate_predictions(predictions, targets):
+def _evaluate_predictions(
+    predictions: np.ndarray, targets: np.ndarray
+) -> Tuple[float, float, float]:
     mae = _mean_absolute_error(targets, predictions)
     mean_pearson_r = _pearsonr(targets, predictions)
     mre = _median_relative_error(targets, predictions)
@@ -32,7 +37,9 @@ def _evaluate_predictions(predictions, targets):
     return mae, mean_pearson_r, mre
 
 
-def _evaluate_predictions_multi(prediction1, prediction2, target1, target2):
+def _evaluate_predictions_multi(
+    prediction1: float, prediction2: float, target1: float, target2: float
+) -> Tuple[float, float, float, float]:
     mean_mae = MeanMAESorted(target1, target2, prediction1, prediction2)
     lowest_mae = LowestMAESorted(target1, target2, prediction1, prediction2)
     mean_pearson_r = MeanPearsonRSorted(target1, target2, prediction1, prediction2)
@@ -41,7 +48,29 @@ def _evaluate_predictions_multi(prediction1, prediction2, target1, target2):
     return mean_mae, lowest_mae, mean_pearson_r, mean_mre
 
 
-def _plot_predictions(test_df, predictions, mae, mean_pearson_r, mre, save_path=None, name=None):
+def _plot_predictions(
+    test_df: pd.DataFrame,
+    predictions: np.ndarray,
+    mae: float,
+    mean_pearson_r: float,
+    mre: float,
+    save_path: str = None,
+    name: str = None,
+) -> None:
+    """Plot the predictions
+
+    Args:
+        test_df (pd.DataFrame): Test dataframe
+        predictions (np.ndarray): Predictions
+        mae (float): Mean absolute error
+        mean_pearson_r (float): Mean Pearson R
+        mre (float): Mean relative error
+        save_path (str): Save path
+        name (str): Model name
+
+    Returns:
+        None
+    """
     try:
         targets = test_df["CCS"].to_numpy()
     except KeyError:
@@ -57,18 +86,36 @@ def _plot_predictions(test_df, predictions, mae, mean_pearson_r, mre, save_path=
 
 
 def _plot_predictions_multi(
-    test_df,
-    prediction1,
-    prediction2,
-    target1,
-    target2,
-    mean_mae,
-    lowest_mae,
-    mean_pearson_r,
-    mean_mre,
-    save_path=None,
-    name=None,
-):
+    test_df: pd.DataFrame,
+    prediction1: float,
+    prediction2: float,
+    target1: float,
+    target2: float,
+    mean_mae: float,
+    lowest_mae: float,
+    mean_pearson_r: float,
+    mean_mre: float,
+    save_path: str = None,
+    name: str = None,
+) -> None:
+    """Plot the predictions for multi-output models
+
+    Args:
+        test_df (pd.DataFrame): Test dataframe
+        prediction1 (float): Prediction 1
+        prediction2 (float): Prediction 2
+        target1 (float): Target 1
+        target2 (float): Target 2
+        mean_mae (float): Mean MAE
+        lowest_mae (float): Lowest MAE
+        mean_pearson_r (float): Mean Pearson R
+        mean_mre (float): Mean MRE
+        save_path (str): Save path
+        name (str): Model name
+
+    Returns:
+        None
+    """
     charges = test_df["charge"].to_numpy()
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
     axes[0].scatter(target1, prediction1, s=1, c=charges, cmap="viridis", label="Prediction 1")
@@ -98,7 +145,25 @@ def _plot_predictions_multi(
     plt.close()
 
 
-def evaluate_and_plot(trainer, model, test_data, test_df, config):
+def evaluate_and_plot(
+    trainer: L.Trainer,
+    model: torch.nn.Module,
+    test_data: torch.utils.data.DataLoader,
+    test_df: pd.DataFrame,
+    config: Dict,
+) -> None:
+    """Evaluate the model and plot the predictions
+
+    Args:
+        trainer (L.Trainer): Lightning trainer
+        model (torch.nn.Module): Model
+        test_data (torch.utils.data.DataLoader): Test data
+        test_df (pd.DataFrame): Test dataframe
+        config (Dict): Configuration dictionary
+
+    Returns:
+        None
+    """
 
     prediction_list = trainer.predict(model, test_data)
     predictions = np.concatenate(prediction_list)

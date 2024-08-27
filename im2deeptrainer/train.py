@@ -1,12 +1,12 @@
+"""Module for training the model."""
+
 import torch
 import torch.nn as nn
 import logging
+from typing import Dict, Tuple
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
 from lightning.pytorch.loggers import WandbLogger
-
-# from pytorchsummary import summary
-
 from im2deeptrainer.model import IM2Deep, IM2DeepMulti, LogLowestMAE, IM2DeepMultiTransfer
 from im2deeptrainer.utils import FlexibleLossSorted
 
@@ -14,7 +14,21 @@ torch.set_float32_matmul_precision("high")
 logger = logging.getLogger(__name__)
 
 
-def _data_to_dataloaders(data, batch_size, shuffle=True):
+def _data_to_dataloaders(
+    data: Dict, batch_size: int, shuffle: bool = True
+) -> torch.utils.data.DataLoader:
+    """
+    Converts data to dataloaders
+
+    Args:
+        data (Dict): Data dictionary
+        batch_size (int): Batch size
+        shuffle (bool): Shuffle data
+
+    Returns:
+        torch.utils.data.DataLoader: Dataloader object
+    """
+
     tensors = {}
     for key in data.keys():
         tensors[key] = torch.tensor(data[key], dtype=torch.float32)
@@ -24,14 +38,32 @@ def _data_to_dataloaders(data, batch_size, shuffle=True):
     return dataloader
 
 
-def _get_dataloaders(data, batch_size):
+def _get_dataloaders(data: Dict, batch_size: int) -> Tuple[torch.utils.data.DataLoader, ...]:
+    """Get dataloaders for training, validation and testing
+
+    Args:
+        data (Dict): Data dictionary
+        batch_size (int): Batch size
+
+    Returns:
+        Tuple[torch.utils.data.DataLoader, ...]: Tuple of dataloaders
+    """
     train_dataloader = _data_to_dataloaders(data["train"], batch_size, shuffle=True)
     valid_dataloader = _data_to_dataloaders(data["valid"], batch_size, shuffle=False)
     test_dataloader = _data_to_dataloaders(data["test"], batch_size, shuffle=False)
     return train_dataloader, valid_dataloader, test_dataloader
 
 
-def _setup_callbacks(model_config, output_path):
+def _setup_callbacks(model_config: Dict, output_path: str) -> list:
+    """Set up callbacks for the model
+
+    Args:
+        model_config (Dict): Model configuration dictionary
+        output_path (str): Output path
+
+    Returns:
+        list: List of callbacks
+    """
     callbacks = [ModelSummary(), RichProgressBar(), LogLowestMAE(model_config)]
     if model_config["use_best_model"]:
         mcp = ModelCheckpoint(
@@ -46,13 +78,27 @@ def _setup_callbacks(model_config, output_path):
     return callbacks
 
 
-def _setup_wandb_logger(wandb_config, model):
+def _setup_wandb_logger(wandb_config: Dict, model: nn.Module) -> WandbLogger:
+    """Set up Weights and Biases logger"""
     wandb_logger = WandbLogger(project=wandb_config["project_name"])
     wandb_logger.watch(model)
     return wandb_logger
 
 
-def train_model(data, model_config, output_path):
+def train_model(
+    data: Dict, model_config: Dict, output_path: str
+) -> Tuple[L.Trainer, nn.Module, torch.utils.data.DataLoader]:
+    """Train the model
+
+    Args:
+        data (Dict): Data dictionary
+        model_config (Dict): Model configuration dictionary
+        output_path (str): Output path
+
+    Returns:
+        Tuple[L.Trainer, nn.Module, torch.utils.data.DataLoader]: Trainer, model and test dataloader
+    """
+
     wandb_config = model_config["wandb"]
     train_data, valid_data, test_data = _get_dataloaders(data, model_config["batch_size"])
     if model_config.get("multi-output", False) == False:
