@@ -35,6 +35,11 @@ def _data_to_dataloaders(
 
     dataset = torch.utils.data.TensorDataset(*[tensors[key] for key in data.keys()])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    for batch_data in dataloader:
+        logger.debug(len(batch_data))
+        logger.debug(batch_data[0])
+        logger.debug(len(batch_data[0]))
+        break
     return dataloader
 
 
