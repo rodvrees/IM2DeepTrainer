@@ -189,7 +189,7 @@ def _get_mol_matrix(psmlist: PSMList, features: pd.DataFrame = MOL_FEATS) -> np.
     return np.array(mol_feats)
 
 
-def _get_matrices(psm_list: PSMList, split_name: str = "test", add_X_mol: bool = False) -> Dict:
+def _get_matrices(psm_list: PSMList, split_name: str = "test", add_X_mol: bool = False, multi_output: bool = False) -> Dict:
     """Get the feature matrices for the given PSMList.
 
     Args:
@@ -206,17 +206,27 @@ def _get_matrices(psm_list: PSMList, split_name: str = "test", add_X_mol: bool =
     # df["tr"] = 0
 
     feat_df = get_feat_df(psm_list=psm_list, predict_ccs=True)
-    y1 = []
-    y2 = []
-    for psm in psm_list:
-        y1.append(float(psm.metadata["CCS1"]))
-        y2.append(float(psm.metadata["CCS2"]))
+    if multi_output:
+        logger.debug("Multi-output")
+        y1 = []
+        y2 = []
+        for psm in psm_list:
+            y1.append(float(psm.metadata["CCS1"]))
+            y2.append(float(psm.metadata["CCS2"]))
 
-    feat_df["tr"] = 0
+        feat_df["tr"] = 0
+        
+    
+    else:
+        feat_df["tr"] = 0
 
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
 
-    y = np.array(list(zip(y1, y2)))
+    if multi_output:
+        y = np.array(list(zip(y1, y2)))
+    else:
+        y = np.array([float(psm.metadata["CCS"]) for psm in psm_list])
+    
     # feat_df["charge"] = df["charge"]
     # feat_df["seq"] = df["seq"]
     # feat_df["modifications"] = df["modifications"]
@@ -273,13 +283,13 @@ def data_extraction(config: Dict) -> Tuple[Dict, pd.DataFrame]:
 
     if config["save_dfs"]:
         ccs_df_train.to_pickle(
-            f"{config['output_path']}/train_data_{config['model_params']['model_name']}.pickle"
+            f"{config['output_path']}/train_data_{config['model_params']['model_name']}.pkl"
         )
         ccs_df_valid.to_pickle(
-            f"{config['output_path']}/valid_data_{config['model_params']['model_name']}.pickle"
+            f"{config['output_path']}/valid_data_{config['model_params']['model_name']}.pkl"
         )
         ccs_df_test.to_pickle(
-            f"{config['output_path']}/test_data_{config['model_params']['model_name']}.pickle"
+            f"{config['output_path']}/test_data_{config['model_params']['model_name']}.pkl"
         )
 
     logger.debug(
@@ -287,72 +297,199 @@ def data_extraction(config: Dict) -> Tuple[Dict, pd.DataFrame]:
     )
 
     train_psm = []
-    for seq, mod, charge, ccs, ident in zip(
-        ccs_df_train["seq"],
-        ccs_df_train["modifications"],
-        ccs_df_train["charge"],
-        ccs_df_train["CCS"],
-        ccs_df_train.index,
-    ):
-        train_psm.append(
-            PSM(
-                peptidoform=peprec_to_proforma(seq, mod, charge),
-                spectrum_id=ident,
-                metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
-            )
-        )
+
+    if config["model_params"].get("multi-output", False):
+        try:
+            for seq, mod, charge, ccs, ident in zip(
+                ccs_df_train["seq"],
+                ccs_df_train["modifications"],
+                ccs_df_train["charge"],
+                ccs_df_train["CCS"],
+                ccs_df_train.index,
+            ):
+                train_psm.append(
+                    PSM(
+                        peptidoform=peprec_to_proforma(seq, mod, charge),
+                        spectrum_id=ident,
+                        metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+                    )
+                )
+        except KeyError:
+            for proforma, ccs, ident in zip(
+                ccs_df_train["proforma"], ccs_df_train["Conformer_CCS_list"], ccs_df_train.index
+            ):
+                train_psm.append(
+                    PSM(
+                        peptidoform=proforma,
+                        spectrum_id=ident,
+                        metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+                    )
+                )
+    else:
+        try:
+            for seq, mod, charge, ccs, ident in zip(
+                ccs_df_train["seq"],
+                ccs_df_train["modifications"],
+                ccs_df_train["charge"],
+                ccs_df_train["CCS"],
+                ccs_df_train.index,
+            ):
+                train_psm.append(
+                    PSM(
+                        peptidoform=peprec_to_proforma(seq, mod, charge),
+                        spectrum_id=ident,
+                        metadata={"CCS": str(ccs)},
+                    )
+                )
+        except KeyError:
+            for proforma, ccs, ident in zip(
+                ccs_df_train["proforma"], ccs_df_train["CCS"], ccs_df_train.index
+            ):
+                train_psm.append(
+                    PSM(
+                        peptidoform=proforma,
+                        spectrum_id=ident,
+                        metadata={"CCS": str(ccs)},
+                    )
+                )
+
     train_psmlist = PSMList(psm_list=train_psm)
 
     valid_psm = []
-    for seq, mod, charge, ccs, ident in zip(
-        ccs_df_valid["seq"],
-        ccs_df_valid["modifications"],
-        ccs_df_valid["charge"],
-        ccs_df_valid["CCS"],
-        ccs_df_valid.index,
-    ):
-        valid_psm.append(
-            PSM(
-                peptidoform=peprec_to_proforma(seq, mod, charge),
-                spectrum_id=ident,
-                metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
-            )
-        )
+
+    if config["model_params"].get("multi-output"):
+        try:
+            for seq, mod, charge, ccs, ident in zip(
+                ccs_df_valid["seq"],
+                ccs_df_valid["modifications"],
+                ccs_df_valid["charge"],
+                ccs_df_valid["CCS"],
+                ccs_df_valid.index,
+            ):
+                valid_psm.append(
+                    PSM(
+                        peptidoform=peprec_to_proforma(seq, mod, charge),
+                        spectrum_id=ident,
+                        metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+                    )
+                )
+        except KeyError:
+            for proforma, ccs, ident in zip(
+                ccs_df_valid["proforma"], ccs_df_valid["Conformer_CCS_list"], ccs_df_valid.index
+            ):
+                valid_psm.append(
+                    PSM(
+                        peptidoform=proforma,
+                        spectrum_id=ident,
+                        metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+                    )
+                )
+    else:
+        try:
+            for seq, mod, charge, ccs, ident in zip(
+                ccs_df_valid["seq"],
+                ccs_df_valid["modifications"],
+                ccs_df_valid["charge"],
+                ccs_df_valid["CCS"],
+                ccs_df_valid.index,
+            ):
+                valid_psm.append(
+                    PSM(
+                        peptidoform=peprec_to_proforma(seq, mod, charge),
+                        spectrum_id=ident,
+                        metadata={"CCS": str(ccs)},
+                    )
+                )
+        except KeyError:
+            for proforma, ccs, ident in zip(
+                ccs_df_valid["proforma"], ccs_df_valid["CCS"], ccs_df_valid.index
+            ):
+                valid_psm.append(
+                    PSM(
+                        peptidoform=proforma,
+                        spectrum_id=ident,
+                        metadata={"CCS": str(ccs)},
+                    )
+                )
+    
     valid_psmlist = PSMList(psm_list=valid_psm)
 
     test_psm = []
-    for seq, mod, charge, ccs, ident in zip(
-        ccs_df_test["seq"],
-        ccs_df_test["modifications"],
-        ccs_df_test["charge"],
-        ccs_df_test["CCS"],
-        ccs_df_test.index,
-    ):
-        test_psm.append(
-            PSM(
-                peptidoform=peprec_to_proforma(seq, mod, charge),
-                spectrum_id=ident,
-                metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
-            )
-        )
+    if config["model_params"].get("multi-output"):
+        try:
+            for seq, mod, charge, ccs, ident in zip(
+                ccs_df_test["seq"],
+                ccs_df_test["modifications"],
+                ccs_df_test["charge"],
+                ccs_df_test["CCS"],
+                ccs_df_test.index,
+            ):
+                test_psm.append(
+                    PSM(
+                        peptidoform=peprec_to_proforma(seq, mod, charge),
+                        spectrum_id=ident,
+                        metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+                    )
+                )
+        except KeyError:
+            for proforma, ccs, ident in zip(
+                ccs_df_test["proforma"], ccs_df_test["Conformer_CCS_list"], ccs_df_test.index
+            ):
+                test_psm.append(
+                    PSM(
+                        peptidoform=proforma,
+                        spectrum_id=ident,
+                        metadata={"CCS1": str(ccs[0]), "CCS2": str(ccs[1])},
+                    )
+                )
+    else:
+        try:
+            for seq, mod, charge, ccs, ident in zip(
+                ccs_df_test["seq"],
+                ccs_df_test["modifications"],
+                ccs_df_test["charge"],
+                ccs_df_test["CCS"],
+                ccs_df_test.index,
+            ):
+                test_psm.append(
+                    PSM(
+                        peptidoform=peprec_to_proforma(seq, mod, charge),
+                        spectrum_id=ident,
+                        metadata={"CCS": str(ccs)},
+                    )
+                )
+        except KeyError:
+            for proforma, ccs, ident in zip(
+                ccs_df_test["proforma"], ccs_df_test["CCS"], ccs_df_test.index
+            ):
+                test_psm.append(
+                    PSM(
+                        peptidoform=proforma,
+                        spectrum_id=ident,
+                        metadata={"CCS": str(ccs)},
+                    )
+                )
     test_psmlist = PSMList(psm_list=test_psm)
 
     train_data = _get_matrices(
         train_psmlist,
         "train",
         add_X_mol=config["model_params"]["add_X_mol"],
+        multi_output=config["model_params"].get("multi-output", False)
     )
 
     valid_data = _get_matrices(
         valid_psmlist,
         "valid",
         add_X_mol=config["model_params"]["add_X_mol"],
+        multi_output=config["model_params"].get("multi-output", False)
     )
 
     test_data = _get_matrices(
         test_psmlist,
         "test",
         add_X_mol=config["model_params"]["add_X_mol"],
+        multi_output=config["model_params"].get("multi-output", False)
     )
 
     if config["save_data_tensors"]:

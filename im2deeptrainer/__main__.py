@@ -4,12 +4,12 @@ from rich.logging import RichHandler
 from rich.console import Console
 import json
 from pathlib import Path
-from im2deeptrainer.exceptions import IM2DeepTrainerConfigError
+from .exceptions import IM2DeepTrainerConfigError
 
 # Relative imports
-from im2deeptrainer.extract_data import data_extraction
-from im2deeptrainer.train import train_model
-from im2deeptrainer.evaluate import evaluate_and_plot
+from .extract_data import data_extraction
+from .train import train_model
+from .evaluate import evaluate_and_plot
 
 console = Console()
 logger = logging.getLogger(__name__)

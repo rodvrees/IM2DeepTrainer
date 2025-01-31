@@ -5,7 +5,7 @@ from typing import Tuple, Dict
 import logging
 import torch
 from scipy import stats
-from im2deeptrainer.utils import MeanMAESorted, LowestMAESorted, MeanPearsonRSorted, MeanMRE
+from .utils import MeanMAESorted, LowestMAESorted, MeanPearsonRSorted, MeanMRE
 import pandas as pd
 import lightning as L
 
@@ -75,7 +75,10 @@ def _plot_predictions(
         targets = test_df["CCS"].to_numpy()
     except KeyError:
         targets = test_df["tr"].to_numpy()
-    charges = test_df["charge"].to_numpy()
+    try:
+        charges = test_df["charge"].to_numpy()
+    except KeyError:
+        charges = test_df["proforma"].apply(lambda x: int(x.split("/")[1])).to_numpy()
     plt.scatter(targets, predictions, s=1, c=charges, cmap="viridis")
     plt.plot([min(targets), max(targets)], [min(targets), max(targets)], color="red")
     plt.xlabel("Observed CCS")
@@ -116,7 +119,10 @@ def _plot_predictions_multi(
     Returns:
         None
     """
-    charges = test_df["charge"].to_numpy()
+    try:
+        charges = test_df["charge"].to_numpy()
+    except KeyError:
+        charges = test_df["proforma"].apply(lambda x: int(x.split("/")[1])).to_numpy()
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
     axes[0].scatter(target1, prediction1, s=1, c=charges, cmap="viridis", label="Prediction 1")
     axes[0].plot([min(target1), max(target1)], [min(target1), max(target1)], color="red")
@@ -170,7 +176,10 @@ def evaluate_and_plot(
     try:
         targets = test_df["CCS"].to_numpy()
     except KeyError:
-        targets = test_df["tr"].to_numpy()
+        try:
+            targets = test_df["tr"].to_numpy()
+        except KeyError:
+            targets = test_df["Conformer_CCS_list"].to_numpy()
 
     if config["model_params"].get("multi-output", False) == False:
 

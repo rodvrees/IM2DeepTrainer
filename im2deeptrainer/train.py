@@ -7,8 +7,8 @@ from typing import Dict, Tuple
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, RichProgressBar
 from lightning.pytorch.loggers import WandbLogger
-from im2deeptrainer.model import IM2Deep, IM2DeepMulti, LogLowestMAE, IM2DeepMultiTransfer
-from im2deeptrainer.utils import FlexibleLossSorted
+from .model import IM2Deep, IM2DeepMulti, LogLowestMAE, IM2DeepMultiTransfer, IM2DeepTransfer
+from .utils import FlexibleLossSorted
 
 torch.set_float32_matmul_precision("high")
 logger = logging.getLogger(__name__)
@@ -102,7 +102,10 @@ def train_model(
     wandb_config = model_config["wandb"]
     train_data, valid_data, test_data = _get_dataloaders(data, model_config["batch_size"])
     if model_config.get("multi-output", False) == False:
-        model = IM2Deep(model_config, criterion=nn.L1Loss())
+        if model_config.get("transfer", False) == False:
+            model = IM2Deep(model_config, criterion=nn.L1Loss())
+        else:
+            model = IM2DeepTransfer(model_config, criterion=nn.L1Loss())
     elif (model_config.get("multi-output", False) == True) and (
         model_config.get("transfer", False) == False
     ):
@@ -133,10 +136,15 @@ def train_model(
     trainer.fit(model, train_data, valid_data)
 
     # Load best model
-    if model_config.get("multi-output", False) == False and model_config["use_best_model"]:
-        model = IM2Deep.load_from_checkpoint(
-            callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss()
-        )
+    if model_config.get("multi-output", False) == False:
+        if model_config["use_best_model"] and model_config.get("transfer", False) == False:
+            model = IM2Deep.load_from_checkpoint(
+                callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss()
+            )
+        elif model_config.get("transfer", False) and model_config["use_best_model"]:
+            model = IM2DeepTransfer.load_from_checkpoint(
+                callbacks[-1].best_model_path, config=model_config, criterion=nn.L1Loss()
+            )
     elif (
         model_config.get("multi-output", False)
         and model_config["use_best_model"]
