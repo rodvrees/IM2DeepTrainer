@@ -4,12 +4,12 @@ from rich.logging import RichHandler
 from rich.console import Console
 import json
 from pathlib import Path
-from im2deeptrainer.exceptions import IM2DeepTrainerConfigError
+from .exceptions import IM2DeepTrainerConfigError
 
 # Relative imports
-from im2deeptrainer.extract_data import data_extraction
-from im2deeptrainer.train import train_model
-from im2deeptrainer.evaluate import evaluate_and_plot
+from .extract_data import data_extraction
+from .train import train_model
+from .evaluate import evaluate_and_plot
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ LOGGING_LEVELS = {
 
 
 def _setup_logging(log_level):
+    """Set up logging for IM2DeepTrainer"""
     logging.basicConfig(
         format="%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
@@ -35,6 +36,7 @@ def _setup_logging(log_level):
 
 
 def _setup_wandb(config):
+    """Set up Weights and Biases logging"""
     wandb_config = config["model_params"]["wandb"]
     if wandb_config["enabled"]:
         import wandb
@@ -52,6 +54,7 @@ def _setup_wandb(config):
 
 
 def _parse_config(config_path: Path):
+    """Parse the config file"""
     if Path(config_path).suffix.lower() != ".json":
         raise IM2DeepTrainerConfigError("Config file must be a JSON file")
 

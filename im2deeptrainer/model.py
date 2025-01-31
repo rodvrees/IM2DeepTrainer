@@ -7,7 +7,7 @@ import lightning as L
 import logging
 import wandb
 
-from im2deeptrainer.utils import (
+from .utils import (
     BASEMODELCONFIG,
     MeanMAESorted,
     LowestMAESorted,
@@ -32,7 +32,6 @@ class LogLowestMAE(L.Callback):
             currentMAE = trainer.callback_metrics["Val Mean MAE"]
         if currentMAE < self.bestMAE:
             self.bestMAE = currentMAE
-
         if self.config["wandb"]["enabled"]:
             wandb.log({"Best Val MAE": self.bestMAE})
 
@@ -1279,6 +1278,145 @@ class IM2DeepMultiTransfer(L.LightningModule):
             atom_comp, diatom_comp, global_feats, one_hot, y = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
         return torch.hstack([y_hat1, y_hat2])
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
+        return optimizer
+
+
+class IM2DeepTransfer(L.LightningModule):
+    def __init__(self, config, criterion):
+        super(IM2DeepTransfer, self).__init__()
+
+        self.config = config
+        self.criterion = criterion
+        self.l1_alpha = config["L1_alpha"]
+        self.mae = nn.L1Loss()
+
+        # Load the IM2Deep model
+        logger.debug("Loading backbone IM2Deep model")
+        self.backbone = IM2Deep.load_from_checkpoint(
+            config["backbone_SD_path"], config=config, criterion=criterion
+        )
+
+        self.ConvAtomComp = self.backbone.ConvAtomComp
+        self.ConvDiatomComp = self.backbone.ConvDiatomComp
+        self.ConvGlobal = self.backbone.ConvGlobal
+        self.OneHot = self.backbone.OneHot
+
+        if self.config.get("add_X_mol", False) == True:
+            self.MolDesc = self.backbone.MolDesc
+
+        self.concat = self.backbone.Concat
+
+    def forward(self, atom_comp, diatom_comp, global_feats, one_hot, mol_desc=None):
+        atom_comp = atom_comp.permute(0, 2, 1)
+        diatom_comp = diatom_comp.permute(0, 2, 1)
+        one_hot = one_hot.permute(0, 2, 1)
+
+        for layer in self.ConvAtomComp:
+            atom_comp = layer(atom_comp)
+
+        for layer in self.ConvDiatomComp:
+            diatom_comp = layer(diatom_comp)
+
+        for layer in self.ConvGlobal:
+            global_feats = layer(global_feats)
+
+        for layer in self.OneHot:
+            one_hot = layer(one_hot)
+
+        if self.config["add_X_mol"]:
+            for layer in self.MolDesc:
+                mol_desc = layer(mol_desc)
+
+        concatenated = torch.cat((atom_comp, diatom_comp, one_hot, global_feats), 1)
+
+        if self.config["add_X_mol"]:
+            concatenated = torch.cat((concatenated, mol_desc), 1)
+
+        for layer in self.concat:
+            concatenated = layer(concatenated)
+
+        y_hat = concatenated
+        return y_hat
+
+    def training_step(self, batch, batch_idx):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+
+        loss = self.criterion(y_hat, y)
+
+        l1_norm = sum(p.abs().sum() for p in self.parameters())
+        total_loss = loss + self.l1_alpha * l1_norm
+
+        self.log(
+            "Train Loss", total_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True
+        )
+        self.log(
+            "Train MAE",
+            self.mae(y_hat, y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return total_loss
+
+    def validation_step(self, batch, batch_idx):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+
+        loss = self.criterion(y_hat, y)
+
+        self.log("Validation Loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Validation MAE",
+            self.mae(y_hat, y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+
+        loss = self.criterion(y_hat, y)
+
+        self.log("Test Loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log(
+            "Test MAE",
+            self.mae(y_hat, y),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+        )
+        return loss
+
+    def predict_step(self, batch):
+        if self.config["add_X_mol"]:
+            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
+        else:
+            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
+        return y_hat
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config["learning_rate"])
