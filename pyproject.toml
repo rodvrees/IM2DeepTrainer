@@ -27,7 +27,7 @@ dependencies = [
     "deeplcretrainer",
     "lightning==2.2.4",
     "pandas",
-    "numpy<=2",
+    "numpy==1.26",
     "rich"
 ]
 
