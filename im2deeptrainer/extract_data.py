@@ -91,12 +91,6 @@ def _empty_array():
     return np.zeros((13, 60), dtype=np.float32)
 
 
-# def _string_to_tuple_list(input_string):
-#     parts = input_string.split("|")
-#     tuple_list = [(int(parts[i]), parts[i + 1]) for i in range(0, len(parts), 2)]
-#     return tuple_list
-
-
 def _peptide_parser(peptide: str) -> Tuple[list, dict, str, str]:
     """Parse the peptide sequence and modifications.
 
@@ -189,7 +183,7 @@ def _get_mol_matrix(psmlist: PSMList, features: pd.DataFrame = MOL_FEATS) -> np.
     return np.array(mol_feats)
 
 
-def _get_matrices(psm_list: PSMList, split_name: str = "test", add_X_mol: bool = False, multi_output: bool = False) -> Dict:
+def _get_matrices(psm_list: PSMList, split_name: str = "test", add_X_mol: bool = False, multi_output: bool = False, inference: bool = False) -> Dict:
     """Get the feature matrices for the given PSMList.
 
     Args:
@@ -201,51 +195,50 @@ def _get_matrices(psm_list: PSMList, split_name: str = "test", add_X_mol: bool =
         Dict: A dictionary containing the feature matrices.
     """
 
-    # # PSM class, used by DeepLC in get_feat_df, cannot handle 2 values for CCS/TR. This is a workaround but should be fixed in the future
-    # df["tr_temp"] = df["tr"].copy()
-    # df["tr"] = 0
-
     feat_df = get_feat_df(psm_list=psm_list, predict_ccs=True)
-    if multi_output:
-        logger.debug("Multi-output")
-        y1 = []
-        y2 = []
-        for psm in psm_list:
-            y1.append(float(psm.metadata["CCS1"]))
-            y2.append(float(psm.metadata["CCS2"]))
 
-        feat_df["tr"] = 0
-        
-    
-    else:
-        feat_df["tr"] = 0
+    if not inference:
+        if multi_output:
+            logger.debug("Multi-output")
+            y1 = []
+            y2 = []
+            for psm in psm_list:
+                y1.append(float(psm.metadata["CCS1"]))
+                y2.append(float(psm.metadata["CCS2"]))
+
+    feat_df["tr"] = 0
 
     X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
 
-    if multi_output:
-        y = np.array(list(zip(y1, y2)))
-    else:
-        y = np.array([float(psm.metadata["CCS"]) for psm in psm_list])
+    if not inference:
+        if multi_output:
+            y = np.array(list(zip(y1, y2)))
+        else:
+            y = np.array([float(psm.metadata["CCS"]) for psm in psm_list])
+
+        data = {
+            f"X_{split_name}_AtomEnc": X,
+            f"X_{split_name}_DiAminoAtomEnc": X_sum,
+            f"X_{split_name}_GlobalFeatures": X_global,
+            f"X_{split_name}_OneHot": X_hc,
+            f"y_{split_name}": y,
+        }
+
+        if add_X_mol:
+            X_mol = _get_mol_matrix(psm_list)
+            data[f"X_{split_name}_MolEnc"] = X_mol
     
-    # feat_df["charge"] = df["charge"]
-    # feat_df["seq"] = df["seq"]
-    # feat_df["modifications"] = df["modifications"]
-    # feat_df["tr"] = df["tr_temp"].to_numpy()
-    # df["tr"] = df["tr_temp"].copy()
-    # del df["tr_temp"]
-    # X, X_sum, X_global, X_hc, y = get_feat_matrix(feat_df)
+    else:
+        data = {
+            f"X_{split_name}_AtomEnc": X,
+            f"X_{split_name}_DiAminoAtomEnc": X_sum,
+            f"X_{split_name}_GlobalFeatures": X_global,
+            f"X_{split_name}_OneHot": X_hc,
+        }
 
-    data = {
-        f"X_{split_name}_AtomEnc": X,
-        f"X_{split_name}_DiAminoAtomEnc": X_sum,
-        f"X_{split_name}_GlobalFeatures": X_global,
-        f"X_{split_name}_OneHot": X_hc,
-        f"y_{split_name}": y,
-    }
-
-    if add_X_mol:
-        X_mol = _get_mol_matrix(psm_list)
-        data[f"X_{split_name}_MolEnc"] = X_mol
+        if add_X_mol:
+            X_mol = _get_mol_matrix(psm_list)
+            data[f"X_{split_name}_MolEnc"] = X_mol
 
     return data
 

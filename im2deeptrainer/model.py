@@ -1270,12 +1270,18 @@ class IM2DeepMultiTransfer(L.LightningModule):
         )
         return loss
 
-    def predict_step(self, batch):
+    def predict_step(self, batch, inference=False):
         if self.config["add_X_mol"]:
-            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            if not inference:
+                atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            else:
+                atom_comp, diatom_comp, global_feats, one_hot, mol_desc = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc)
         else:
-            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            if not inference:
+                atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            else:
+                atom_comp, diatom_comp, global_feats, one_hot = batch
             y_hat1, y_hat2 = self(atom_comp, diatom_comp, global_feats, one_hot)
         return torch.hstack([y_hat1, y_hat2])
 
@@ -1409,12 +1415,18 @@ class IM2DeepTransfer(L.LightningModule):
         )
         return loss
 
-    def predict_step(self, batch):
+    def predict_step(self, batch, inference=False):
         if self.config["add_X_mol"]:
-            atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            if not inference:
+                atom_comp, diatom_comp, global_feats, one_hot, y, mol_desc = batch
+            else:
+                atom_comp, diatom_comp, global_feats, one_hot, mol_desc = batch
             y_hat = self(atom_comp, diatom_comp, global_feats, one_hot, mol_desc).squeeze(1)
         else:
-            atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            if not inference:
+                atom_comp, diatom_comp, global_feats, one_hot, y = batch
+            else:
+                atom_comp, diatom_comp, global_feats, one_hot = batch
             y_hat = self(atom_comp, diatom_comp, global_feats, one_hot).squeeze(1)
         return y_hat
 
