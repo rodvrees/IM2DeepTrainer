@@ -1,1 +1,1 @@
-include im2deeptrainer/*
+include im2deeptrainer/package_data/*
