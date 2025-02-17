@@ -22,12 +22,12 @@ dependencies = [
     "scipy",
     "wandb",
     "matplotlib",
-    "torch",
+    "torch==2.3.0",
     "deeplc",
     "deeplcretrainer",
-    "lightning",
+    "lightning==2.2.4",
     "pandas",
-    "numpy",
+    "numpy<=2",
     "rich"
 ]
 
