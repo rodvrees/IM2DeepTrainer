@@ -57,7 +57,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ['im2deeptrainer']
-license-files = []
+license-files = ['LICENSE']
 include-package-data = true
 
 [tool.setuptools.dynamic]

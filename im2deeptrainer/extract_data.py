@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 random.seed(42)
 
 MOL_FEATS = pd.read_csv(
-    os.path.join(os.path.dirname(os.path.realpath(__file__)), "aa_mol_desc_feats.csv")
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "package_data", "aa_mol_desc_feats.csv")
 )
 
 
